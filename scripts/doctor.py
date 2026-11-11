@@ -44,14 +44,16 @@ def main():
         import torch
         import vllm
         distribution = version("vllm")
+        codec = version("torchcodec")
         print(json.dumps({"python": sys.version.split()[0], "vllm": vllm.__version__,
                           "vllm_distribution": distribution,
-                          "torch": torch.__version__, "cuda": torch.version.cuda}))
+                          "torch": torch.__version__, "cuda": torch.version.cuda, "torchcodec": codec}))
         # The cu129 wheel can expose __version__ == "0.25.1" while its
         # distribution metadata carries +cu129. Validate that metadata and the
         # actual Torch/CUDA runtime instead of rejecting that official build.
         if (distribution != "0.25.1+cu129"
-                or torch.__version__ != "2.11.0+cu129" or torch.version.cuda != "12.9"):
+                or torch.__version__ != "2.11.0+cu129" or torch.version.cuda != "12.9"
+                or codec != "0.15.0+cu129"):
             raise SystemExit("Use the pinned vllm0251 environment")
         if not torch.cuda.is_available():
             raise SystemExit("CUDA unavailable; check NVIDIA driver / device visibility")
@@ -59,6 +61,11 @@ def main():
         if (value @ value).sum().item() != 32768:
             raise SystemExit("CUDA tensor check failed")
         print("OK CUDA tensor operation:", torch.cuda.get_device_name(0))
+        # Exercise the actual CLI import chain, including media/codec imports,
+        # without loading any model weights or opening a listening socket.
+        subprocess.run([str(Path(sys.executable).with_name("vllm")), "serve", "--help"],
+                       check=True, stdout=subprocess.DEVNULL)
+        print("OK vLLM serving CLI imports")
         return
     root = Path(__file__).resolve().parents[1]
     sys.path[:0] = [str(root / "spectool"), str(root / "spectool/VLMEvalKit")]

@@ -75,7 +75,7 @@ bash scripts/doctor.sh --server
 
 先安装第 1 节的系统依赖，确保 `redis-server` 在 PATH 中（或已放在所选客户端环境的 `bin/` 中）。安装器不会通过 Conda 安装 Redis。它自动下载并校验 Miniconda，创建 `spectool`（客户端）和 `vllm0251`（模型服务）两个环境，安装已固定的核心版本。客户端完整依赖在 Linux x86_64 / Python 3.10 下解析并记录为 `requirements/client-linux.lock`；原始依赖清单位于 `requirements/client.txt`。客户端 Torch 仅用于库依赖，评测通过 HTTP 调用模型，不要求客户端 CUDA 可用。
 
-`doctor.sh` 检查客户端导入、模型注册和 Redis / setsid 命令；`doctor.sh --server` 检查 vLLM、Torch 版本与真实 CUDA tensor 运算。任何失败都应先处理，再启动正式模型测试。
+`doctor.sh` 检查客户端导入、模型注册和 Redis / setsid 命令；`doctor.sh --server` 检查 vLLM、Torch、TorchCodec 的 CUDA 12.9 版本，执行真实 CUDA tensor 运算及 `vllm serve --help` 导入检查，不加载模型。任何失败都应先处理，再启动正式模型测试。
 
 可单独安装：
 
@@ -92,7 +92,7 @@ PyTorch 官方下载源较慢时，可在 `.env` 中设置 CUDA 12.9 镜像索�
 PYTORCH_INDEX_URL=https://mirror.sjtu.edu.cn/pytorch-wheels/cu129/
 ```
 
-这只更换下载来源，仍按约束安装 `torch==2.11.0+cu129`、`torchvision==0.26.0+cu129` 和 `torchaudio==2.11.0+cu129`，不要把索引换成其他 CUDA 版本。未设置时使用 PyTorch 官方索引。
+这只更换下载来源，仍按约束安装 `torch==2.11.0+cu129`、`torchvision==0.26.0+cu129` 、`torchaudio==2.11.0+cu129` 和 `torchcodec==0.15.0+cu129`，不要把索引换成其他 CUDA 版本。未设置时使用 PyTorch 官方索引。
 
 默认使用工作目录中的独立 Miniconda，两个环境分别是 `$CONDA_BASE/envs/spectool` 和 `$CONDA_BASE/envs/vllm0251`。已有合适的 Conda 时，可以设置 `CONDA_BASE`。也可将 `CLIENT_PYTHON` / `SERVER_PYTHON` 指向其他独立 Conda 环境的绝对 `bin/python` 路径；安装器在该前缀创建环境，启动器也按同一完整前缀激活，不再按环境名称查找，不依赖 `CONDA_ENVS_PATH`。
 
@@ -202,6 +202,8 @@ bash scripts/run_test.sh --method spectool --bench vstar --full
 | Conda / Python 路径错误 | 检查 `.env` 及已导出的同名变量，运行 `setup_env.sh --dry-run`、`doctor.sh --paths --bench vstar` 查看路径 |
 | 端口冲突 | 设置空闲的 `MAIN_PORT` / `DRAFT_PORT` / `SANDBOX_PORT` / `SANDBOX_REDIS_PORT`，或显式复用已确认的服务 |
 | 客户端 pyarrow 被屏蔽 | 不要给客户端设置 `compat/vllm_no_pyarrow` 的 PYTHONPATH；兼容模块只用于 vLLM 进程 |
+
+TorchCodec 固定为 `0.15.0+cu129`，避免解析到默认 CUDA 13 wheel 后出现 `libnvrtc.so.13` 缺失、导致模型服务无法启动的[上游问题](https://github.com/vllm-project/vllm/issues/63121)。
 
 完整安装会运行依赖兼容检查。上游 [decord 0.6.0 的 Linux wheel 标签问题](https://github.com/dmlc/decord/issues/313) 会令原生 `pip check` 报平台不支持；脚本仅在 Linux x86_64、确认该版本及错误的 cp36 标签、且实际导入成功时接受这一条提示，日志会明确标记 `COMPAT`。任何其他依赖错误或导入失败仍会终止，不会跳过检查。
 
