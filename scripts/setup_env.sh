@@ -80,7 +80,7 @@ if [[ "$profile" == all || "$profile" == server ]]; then
         fi
     fi
     run "$SERVER_PYTHON" -m pip install \
-        --extra-index-url https://download.pytorch.org/whl/cu129 \
+        --extra-index-url "${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cu129}" \
         -c "$SPECAGENT_REPO/requirements/vllm.constraints.txt" \
         "$wheel" transformers==5.14.1 huggingface-hub==1.24.0
     run "$SERVER_PYTHON" "$SPECAGENT_REPO/scripts/check_dependencies.py"

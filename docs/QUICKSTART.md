@@ -86,6 +86,14 @@ bash scripts/setup_env.sh --server-only
 
 Miniconda 官方下载较慢时，可设置 `MINICONDA_URL` 为同名安装包的可信镜像地址；仍会校验固定 SHA256。pip 源可通过标准 `PIP_INDEX_URL` 环境变量配置。GitHub 下载慢时，可将同一官方 vLLM wheel 预先放到本机，在 `.env` 中设置 `VLLM_WHEEL=/绝对路径/vllm-0.25.1+cu129-cp38-abi3-manylinux_2_28_x86_64.whl`，或设置 `VLLM_WHEEL_URL` 为该文件的可信镜像地址；安装器始终校验固定 SHA256，不更换版本。默认下载使用 `.part` 文件，支持断点续传，低速超时后会报错而不会无限等待；已校验的本地 wheel 可在重复安装时复用。
 
+PyTorch 官方下载源较慢时，可在 `.env` 中设置 CUDA 12.9 镜像索引（参见[交大镜像说明](https://mirror.sjtu.edu.cn/docs/pytorch-wheels)）：
+
+```bash
+PYTORCH_INDEX_URL=https://mirror.sjtu.edu.cn/pytorch-wheels/cu129/
+```
+
+这只更换下载来源，仍按约束安装 `torch==2.11.0+cu129`、`torchvision==0.26.0+cu129` 和 `torchaudio==2.11.0+cu129`，不要把索引换成其他 CUDA 版本。未设置时使用 PyTorch 官方索引。
+
 默认使用工作目录中的独立 Miniconda，两个环境分别是 `$CONDA_BASE/envs/spectool` 和 `$CONDA_BASE/envs/vllm0251`。已有合适的 Conda 时，可以设置 `CONDA_BASE`。也可将 `CLIENT_PYTHON` / `SERVER_PYTHON` 指向其他独立 Conda 环境的绝对 `bin/python` 路径；安装器在该前缀创建环境，启动器也按同一完整前缀激活，不再按环境名称查找，不依赖 `CONDA_ENVS_PATH`。
 
 安装脚本会修改所选环境的依赖。需要隔离验证时，保留独立的 `CONDA_BASE`，不要指向正在运行实验的环境。
@@ -99,7 +107,7 @@ bash scripts/download_data.sh --bench vstar
 
 默认下载 `MAIN_MODEL_ID=Qwen/Qwen3.5-27B` 和 `DRAFT_MODEL_ID=Qwen/Qwen3.5-9B`。默认目录为 `$RESOURCE_DIR/$MAIN_MODEL_ID` 和 `$RESOURCE_DIR/$DRAFT_MODEL_ID`；显式设置 `MAIN_MODEL_PATH` / `DRAFT_MODEL_PATH` 后，下载、离线权重检查和服务启动都使用相应目录。`download_models.sh --model 27B` / `--model 9B` 分别表示 Main / Draft 角色，保留旧入口命名。更换型号时同时修改仓库 ID 和路径，避免把不同型号下载进同一个目录。
 
-下载器固定模型 commit，在模型目录内保存 `.specagent-revision.json`，单 worker 下载、失败重试，随后离线验证配置和全部权重分片。已有模型和 benchmark 时，**跳过下载**，按下一节填写现有路径。
+下载器固定模型 commit，在模型目录内保存 `.specagent-revision.json`，单 worker 下载、失败重试，随后离线验证配置和全部权重分片。已有模型和 benchmark 时，**跳过下载**，按下一节填写现有路径。适配器和结果文件中的 `Qwen3.5` 是保留的注册名；实际使用的模型由 `MAIN_MODEL_PATH` / `DRAFT_MODEL_PATH` 决定，可在启动计划、vLLM 日志及 `/v1/models` 中核对。
 
 网络不能访问 Hugging Face 时，在 `.env` 设置：
 

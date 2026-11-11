@@ -39,7 +39,8 @@ def test_dotenv_drives_install_and_quick_plan_from_another_directory(checkout, t
     (checkout / '.env').write_text(
         f'SPECAGENT_WORK_ROOT="{work}"\nCLIENT_PYTHON="{client}"\nSERVER_PYTHON="{server}"\n'
         f'LMUData="{work}/existing TSVs"\nMAIN_MODEL_PATH="{work}/weights main"\n'
-        'MAIN_GPUS=4\nMAIN_TP=1\nDRAFT_GPUS=5\nDRAFT_TP=1\n')
+        'MAIN_GPUS=4\nMAIN_TP=1\nDRAFT_GPUS=5\nDRAFT_TP=1\n'
+        'PYTORCH_INDEX_URL=https://torch-mirror.example/cu129\n')
     result = run(checkout, 'scripts/setup_env.sh', '--dry-run')
     assert result.returncode == 0, result.stderr
     commands = [shlex.split(line[2:]) for line in result.stdout.splitlines() if line.startswith('+ ')]
@@ -47,6 +48,8 @@ def test_dotenv_drives_install_and_quick_plan_from_another_directory(checkout, t
     assert {cmd[cmd.index('-p') + 1] for cmd in creates} == {str(client.parent.parent), str(server.parent.parent)}
     pip_installs = [cmd for cmd in commands if '-m' in cmd and 'pip' in cmd]
     assert pip_installs[0][0] == str(client)
+    server_install = next(cmd for cmd in pip_installs if '--extra-index-url' in cmd)
+    assert server_install[server_install.index('--extra-index-url') + 1] == 'https://torch-mirror.example/cu129'
     result = run(checkout, 'scripts/run_test.sh', '--method', 'spectool', '--dry-run')
     assert result.returncode == 0, result.stderr
     assert json.dumps(str(work / 'existing TSVs/VStarBench.tsv')) in result.stdout
