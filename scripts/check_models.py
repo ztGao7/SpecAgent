@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from safetensors import safe_open
+from model_paths import selected_models
 
 
 def main():
@@ -12,8 +13,7 @@ def main():
     parser.add_argument('--resource-dir', required=True, type=Path)
     parser.add_argument("--model", choices=["27B", "9B", "both"], default="both")
     args = parser.parse_args()
-    for size in (['27B', '9B'] if args.model == 'both' else [args.model]):
-        root = args.resource_dir.expanduser().resolve() / 'Qwen' / f'Qwen3.5-{size}'
+    for _, root in selected_models(args.resource_dir.expanduser().resolve(), args.model):
         for name in ['config.json', 'tokenizer_config.json', 'tokenizer.json',
                      'preprocessor_config.json', 'model.safetensors.index.json']:
             with (root / name).open() as stream:

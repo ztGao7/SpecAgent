@@ -900,7 +900,7 @@ start_vllm() {
     (
         local -a extra_args vllm_cmd
         source "$CONDA_INIT"
-        conda activate "$VLLM_ENV"
+        specagent_activate_server
         export VLLM_USE_FLASHINFER_SAMPLER="${VLLM_USE_FLASHINFER_SAMPLER:-0}"
         export VLLM_REGEX_COMPILATION_TIMEOUT_S="${VLLM_REGEX_COMPILATION_TIMEOUT_S:-60}"
         if [[ -d "$VLLM_SERVER_PYTHONPATH" ]]; then
@@ -963,7 +963,7 @@ start_sandbox() {
     log "Starting sandbox on port $SANDBOX_PORT, redis=$SANDBOX_REDIS_PORT"
     (
         source "$CONDA_INIT"
-        conda activate spectool
+        specagent_activate_client
         cd "$SANDBOX_ROOT"
         export SANDBOX_REDIS_PORT SANDBOX_REDIS_PASSWORD
         cp redis_client.py "$redis_override/redis_client.py"
@@ -1130,7 +1130,7 @@ run_eval() {
     draft_urls="$(draft_base_urls)"
     (
         source "$CONDA_INIT"
-        conda activate spectool
+        specagent_activate_client
         # The PyArrow shim is only for vLLM workers; EvalKit must use real PyArrow.
         unset PYTHONPATH
         cd "$SPECTOOL_ROOT"

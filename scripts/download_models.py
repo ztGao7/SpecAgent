@@ -7,6 +7,7 @@ from pathlib import Path
 import time
 
 from huggingface_hub import HfApi, snapshot_download
+from model_paths import selected_models
 
 
 def main():
@@ -18,14 +19,18 @@ def main():
     root.mkdir(parents=True, exist_ok=True)
     endpoint = os.environ.get('HF_ENDPOINT', 'https://huggingface.co')
     api = HfApi(endpoint=endpoint)
-    sizes = ['27B', '9B'] if args.model == 'both' else [args.model]
-    for size in sizes:
-        repo = f'Qwen/Qwen3.5-{size}'
-        dest = root / repo
-        record = root / f'Qwen3.5-{size}.revision.json'
+    for repo, dest in selected_models(root, args.model):
+        dest.mkdir(parents=True, exist_ok=True)
+        record = dest / '.specagent-revision.json'
+        legacy = root / f'{repo.rsplit("/", 1)[-1]}.revision.json'
+        if not record.exists() and legacy.exists():
+            record.write_text(legacy.read_text())
         # Once resolved, retries and subsequent invocations keep the same revision.
         if record.exists():
-            revision = json.loads(record.read_text())['revision']
+            metadata = json.loads(record.read_text())
+            if metadata['repo_id'] != repo:
+                raise RuntimeError(f'{dest} contains a revision record for {metadata["repo_id"]}, not {repo}')
+            revision = metadata['revision']
         else:
             revision = api.model_info(repo).sha
             if not revision:

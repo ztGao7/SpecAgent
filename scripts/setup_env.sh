@@ -39,38 +39,50 @@ if [[ ! -x "$CONDA_BASE/bin/conda" ]]; then
     run bash "$installer" -b -p "$CONDA_BASE"
 fi
 if [[ "$profile" != server ]]; then
+    if [[ "$profile" != core && "$dry_run" == false ]]; then
+        PATH="$(dirname "$CLIENT_PYTHON"):$PATH" command -v redis-server >/dev/null || {
+            printf 'Missing redis-server. Install the system dependencies in docs/QUICKSTART.md (Ubuntu/Debian: sudo apt-get install redis-server).\n' >&2
+            exit 1
+        }
+    fi
     if [[ ! -x "$CLIENT_PYTHON" ]]; then
         run "$CONDA_BASE/bin/conda" create --override-channels -c conda-forge \
-            -p "$CONDA_BASE/envs/spectool" python=3.10 pip -y
+            -p "$CLIENT_ENV_PREFIX" python=3.10 pip -y
     fi
     if [[ "$profile" == core ]]; then requirements=core.txt; else requirements=client-linux.lock; fi
     run "$CLIENT_PYTHON" -m pip install -r "$SPECAGENT_REPO/requirements/$requirements"
     if [[ "$profile" != core ]]; then
-        run "$CONDA_BASE/bin/conda" install --override-channels -c conda-forge \
-            -p "$CONDA_BASE/envs/spectool" redis -y
         # Build metadata is resolved from the vendored directory, not caller CWD.
         if [[ "$dry_run" == false ]]; then cd "$SPECAGENT_REPO/spectool/VLMEvalKit"; fi
         run "$CLIENT_PYTHON" -m pip install -e "$SPECAGENT_REPO/spectool/VLMEvalKit" --no-deps --no-build-isolation
     fi
-    run "$CLIENT_PYTHON" -m pip check
+    run "$CLIENT_PYTHON" "$SPECAGENT_REPO/scripts/check_dependencies.py"
 fi
 if [[ "$profile" == all || "$profile" == server ]]; then
     if [[ ! -x "$SERVER_PYTHON" ]]; then
         run "$CONDA_BASE/bin/conda" create --override-channels -c conda-forge \
-            -p "$CONDA_BASE/envs/vllm0251" python=3.12 pip -y
+            -p "$SERVER_ENV_PREFIX" python=3.12 pip -y
     fi
-    wheel="$SPECAGENT_WORK_ROOT/vllm-0.25.1+cu129-cp38-abi3-manylinux_2_28_x86_64.whl"
-    run curl -fLsS --retry 3 \
-        https://github.com/vllm-project/vllm/releases/download/v0.25.1/vllm-0.25.1+cu129-cp38-abi3-manylinux_2_28_x86_64.whl \
-        -o "$wheel"
-    if [[ "$dry_run" == false ]]; then
-        printf '%s  %s\n' 9e206f370c934a2d4b6b1f05d3d09708d344e05d80260189ef19f60755709431 \
-            "$wheel" | sha256sum -c -
+    wheel="${VLLM_WHEEL:-$SPECAGENT_WORK_ROOT/vllm-0.25.1+cu129-cp38-abi3-manylinux_2_28_x86_64.whl}"
+    wheel_sha=9e206f370c934a2d4b6b1f05d3d09708d344e05d80260189ef19f60755709431
+    if [[ -f "$wheel" ]]; then
+        if [[ "$dry_run" == false ]]; then
+            printf '%s  %s\n' "$wheel_sha" "$wheel" | sha256sum -c -
+        fi
+    else
+        run curl -fLsS --retry 3 --connect-timeout 20 --speed-limit 65536 --speed-time 120 \
+            --continue-at - \
+            "${VLLM_WHEEL_URL:-https://github.com/vllm-project/vllm/releases/download/v0.25.1/vllm-0.25.1+cu129-cp38-abi3-manylinux_2_28_x86_64.whl}" \
+            -o "$wheel.part"
+        if [[ "$dry_run" == false ]]; then
+            printf '%s  %s\n' "$wheel_sha" "$wheel.part" | sha256sum -c -
+            mv "$wheel.part" "$wheel"
+        fi
     fi
     run "$SERVER_PYTHON" -m pip install \
         --extra-index-url https://download.pytorch.org/whl/cu129 \
         -c "$SPECAGENT_REPO/requirements/vllm.constraints.txt" \
         "$wheel" transformers==5.14.1 huggingface-hub==1.24.0
-    run "$SERVER_PYTHON" -m pip check
+    run "$SERVER_PYTHON" "$SPECAGENT_REPO/scripts/check_dependencies.py"
 fi
 printf 'Environment plan complete: %s (dry-run=%s)\n' "$profile" "$dry_run"

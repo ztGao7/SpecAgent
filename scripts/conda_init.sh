@@ -6,3 +6,11 @@ if [[ ! -f "$CONDA_BASE/etc/profile.d/conda.sh" ]]; then
     return 1
 fi
 source "$CONDA_BASE/etc/profile.d/conda.sh"
+
+specagent_activate_client() {
+    conda activate "$CLIENT_ENV_PREFIX"
+}
+
+specagent_activate_server() {
+    conda activate "$SERVER_ENV_PREFIX"
+}

@@ -200,7 +200,10 @@ choose_port() { [[ "$1" == main ]] || return 1; printf '%s' "$2"; }
 resolve_ports
 '''
     result = subprocess.run(["bash", "-c", script, "_", str(LAUNCHER)],
-                            env={**os.environ, "SPECTOOL_START_TEST_SOURCE_ONLY": "1"},
+                            # This test checks benchmark defaults, independently
+                            # of the user's automatically loaded GPU/context .env.
+                            env={**os.environ, "SPECTOOL_START_TEST_SOURCE_ONLY": "1",
+                                 "MAIN_MAX_MODEL_LEN": "", "MAIN_TP": "2"},
                             text=True, capture_output=True)
     assert result.returncode == 0, result.stderr
     assert "VLLM=main TP=2" in result.stdout

@@ -11,10 +11,10 @@
 ```bash
 git clone https://github.com/ztGao7/SpecAgent.git
 cd SpecAgent
-cp configs/env.example .env
+cp .env.example .env
 
 # 编辑 .env，设置可写的数据盘目录，以及 GPU 编号和张量并行数（TP）。
-set -a; source .env; set +a
+# 所有入口自动读取仓库根目录 .env，无需 source 或激活环境。
 
 # 先跑 CPU 快速检查，无需模型权重和 GPU。
 bash scripts/setup_env.sh --core-only
@@ -28,10 +28,13 @@ bash scripts/doctor.sh --server
 # 下载 Qwen3.5-27B、Qwen3.5-9B 和 VStar 测试数据。
 bash scripts/download_models.sh
 bash scripts/download_data.sh --bench vstar
+bash scripts/doctor.sh --paths --bench vstar
 
 # 启动所需服务，选取两个固定样本进行真实模型推理。
 bash scripts/run_test.sh --method spectool --bench vstar --samples 2
 ```
+
+已有模型和数据时，在 `.env` 中设置 `MAIN_MODEL_PATH`、`DRAFT_MODEL_PATH` 和 `LMUData`，跳过下载；用 `doctor.sh --paths --bench vstar` 检查实际路径。配置优先级为命令行参数、已导出的环境变量、`.env`、默认值。`.env` 被 Git 忽略；多份配置可用 `SPECAGENT_ENV_FILE=/绝对路径/实验.env bash scripts/run_test.sh ...` 选择。
 
 环境安装会分别创建 `spectool` 客户端环境和 `vllm0251` 模型服务环境。模型、数据、缓存及环境默认保存在配置的数据盘目录中；详细版本和配置方法见[快速入门](docs/QUICKSTART.md)。
 
@@ -59,7 +62,7 @@ bash scripts/run_test.sh --method spectool --bench vstar --samples 2
 ```text
 scripts/                    # 环境安装、下载、诊断与测试入口
 requirements/               # 轻量依赖、Linux 客户端版本锁定及服务端版本约束
-configs/env.example         # 本地配置示例
+.env.example                # 本地配置模板；复制成 .env 后自动加载
 start_test.sh               # 完整的服务启动与评测编排脚本
 spectool/spectool_agent/    # Spectool 与公共模型、工具、提示词代码
 spectool/VLMEvalKit/        # 包含本项目修改的评测框架
@@ -78,8 +81,8 @@ git submodule update --init --recursive
 
 ## 验证情况与使用范围
 
-Linux 新建环境及全新 clone 后，默认 CPU 快速测试的 **121 项检查全部通过**。该测试范围在 `scripts/test.sh` 中明确列出，使用模拟模型和工具响应。详细记录见[验证说明](docs/VALIDATION.md)。
+默认 CPU 快速测试目前为 **128 项，已在 macOS 和 Linux 新客户端环境通过**，包括 `.env`、路径传递和启动入口回归。已用 Qwen3.8-27B-FP8 + Qwen3.5-9B 在两张 4090 上完成 Spectool / VStar 的单样本真实推理，并验证本次服务自动清理。详细范围见[验证说明](docs/VALIDATION.md)。
 
-原始研究测试保留在 `spectool/tests` 中，其中部分仍针对已移除的接口，完整套件存在已知失败，可通过 `bash scripts/test.sh --full` 查看。真实 GPU 推理仍需在部署机器上验证；本次发布不代表获得了新的准确率或加速比结果。
+原始研究测试保留在 `spectool/tests` 中，其中部分仍针对已移除的接口，完整套件存在已知失败，可通过 `bash scripts/test.sh --full` 查看。目标机器仍需执行小样本验证；以上检查不代表全 benchmark 准确率、加速比或 A800 性能已经验证。
 
 仓库不包含模型权重、数据集内容、实验输出、凭据或原私有仓库历史。发布范围见[代码与配置说明](docs/RELEASE_SCOPE.md)，第三方代码及许可信息见[第三方声明](THIRD_PARTY_NOTICES.md)。sandbox 以服务账号的权限执行生成的 Python 代码，适用于可信的本地实验环境。

@@ -81,6 +81,9 @@ def main():
                       "output": str(output), "main_gpus": env["MAIN_GPUS"],
                       "main_tp": env["MAIN_TP"], "draft_gpus": env["DRAFT_GPUS"],
                       "draft_tp": env["DRAFT_TP"], "reusing_services": args.reuse_services}, indent=2), flush=True)
+    print(json.dumps({"client_python": python, "server_python": server,
+                      "main_model": env.get("MAIN_MODEL_PATH"), "draft_model": env.get("DRAFT_MODEL_PATH"),
+                      "data_table": str(table)}, indent=2), flush=True)
     print(shlex.join(command), flush=True)
     if args.dry_run:
         return
@@ -98,7 +101,9 @@ def main():
             raise SystemExit(f"Model missing: {model}\nRun: bash scripts/download_models.sh, or configure MAIN_MODEL_PATH / DRAFT_MODEL_PATH")
     subprocess.run([python, str(ROOT / "scripts/doctor.py"), "--data", str(table)], env=env, check=True)
     if not args.reuse_services:
-        subprocess.run([server, str(ROOT / "scripts/doctor.py"), "--server"], env=env, check=True)
+        probe_gpus = env["DRAFT_GPUS"] if args.method == "draft-only" else env["MAIN_GPUS"]
+        subprocess.run([server, str(ROOT / "scripts/doctor.py"), "--server"],
+                       env=dict(env, CUDA_VISIBLE_DEVICES=probe_gpus), check=True)
         ports = [int(env.get("MAIN_PORT", "8126"))]
         if args.method not in {"direct", "baseline"}:
             ports.append(int(env.get("DRAFT_PORT", "8129")))
