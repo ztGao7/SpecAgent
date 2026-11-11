@@ -2,6 +2,8 @@
 
 Checks performed for this release:
 
+- Cloned the published GitHub repository into new directories on Linux and macOS and ran the default test entry point against the separately prepared client environments: **121 passed on each**. The Linux clone did not initialize optional upstream submodules; the macOS clone did, confirming neither route relies on the old worktree.
+
 - Created a new, isolated Linux x86_64 Conda installation and Python 3.10 client environment using `setup_env.sh --core-only`. The Miniconda checksum was verified and `pip check` passed. Trusted download/package mirrors were supplied through the documented environment variables because direct downloads were slow.
 - Ran the public CPU quick-test entry point in that environment: **121 passed**. The same suite passed in a separate clean Python 3.10 environment on macOS.
 - Resolved the complete client requirement graph for Linux x86_64 / Python 3.10 into `requirements/client-linux.lock`. This is a dependency-resolution check, not a claim of a fresh full GPU-stack installation.

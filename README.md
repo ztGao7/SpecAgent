@@ -5,7 +5,7 @@ Spectool and the SpecEyes / SpecReason visual-tool baselines, with a local vLLM 
 **Start here: [环境配置、模型下载与启动测试（中文）](docs/QUICKSTART.md).** The repository now includes the shared runtime and sandbox; no access to the original experimental server is required.
 
 ```bash
-git clone --recurse-submodules https://github.com/ztGao7/SpecAgent.git
+git clone https://github.com/ztGao7/SpecAgent.git
 cd SpecAgent
 cp configs/env.example .env
 # Edit .env: choose a writable data disk and your GPU/TP configuration.
@@ -50,6 +50,8 @@ sandbox_repo/               # local Redis/Jupyter execution service
 baselines/specreason/       # separate SpecReason controller and frozen-runtime preparation
 baselines/speceyes/         # adaptation documentation and pinned official submodule
 ```
+
+The included visual-agent pipeline does not require initializing the official submodules. To inspect/run the original upstream implementations separately, use `git submodule update --init --recursive`.
 
 Official SpecEyes and SpecReason implementations remain pinned Git submodules; provenance is recorded in [UPSTREAMS.json](UPSTREAMS.json). Their original task/deployment instructions are separate from these visual-agent adaptations.
 

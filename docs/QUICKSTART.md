@@ -7,10 +7,12 @@
 ## 1. Clone 并配置数据盘
 
 ```bash
-git clone --recurse-submodules https://github.com/ztGao7/SpecAgent.git
+git clone https://github.com/ztGao7/SpecAgent.git
 cd SpecAgent
 cp configs/env.example .env
 ```
+
+启动本仓库管线无需额外初始化官方基线子模块；需要查看或运行官方原始实现时，再执行 `git submodule update --init --recursive`。
 
 编辑 `.env`，至少设置：
 
