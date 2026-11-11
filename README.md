@@ -16,6 +16,11 @@ cp .env.example .env
 # 编辑 .env，设置可写的数据盘目录，以及 GPU 编号和张量并行数（TP）。
 # 所有入口自动读取仓库根目录 .env，无需 source 或激活环境。
 
+# Ubuntu/Debian 系统依赖（已安装可跳过；无 sudo 权限请管理员准备）。
+sudo apt-get update
+sudo apt-get install -y curl git build-essential pkg-config util-linux \
+  redis-server tesseract-ocr libgl1 libglib2.0-0 libcairo2-dev
+
 # 先跑 CPU 快速检查，无需模型权重和 GPU。
 bash scripts/setup_env.sh --core-only
 bash scripts/run_test.sh
@@ -33,6 +38,8 @@ bash scripts/doctor.sh --paths --bench vstar
 # 启动所需服务，选取两个固定样本进行真实模型推理。
 bash scripts/run_test.sh --method spectool --bench vstar --samples 2
 ```
+
+国内网络下载较慢时，可在 `.env` 启用示例中的 `PIP_INDEX_URL`、`PYTORCH_INDEX_URL` 和 `HF_ENDPOINT`；GitHub wheel 下载受限时，按[快速入门](docs/QUICKSTART.md)设置 `VLLM_WHEEL` 本地包或 `VLLM_WHEEL_URL`。首次安装需要下载数 GB 依赖，耗时取决于网络。
 
 已有模型和数据时，在 `.env` 中设置 `MAIN_MODEL_PATH`、`DRAFT_MODEL_PATH` 和 `LMUData`，跳过下载；用 `doctor.sh --paths --bench vstar` 检查实际路径。配置优先级为命令行参数、已导出的环境变量、`.env`、默认值。`.env` 被 Git 忽略；多份配置可用 `SPECAGENT_ENV_FILE=/绝对路径/实验.env bash scripts/run_test.sh ...` 选择。
 

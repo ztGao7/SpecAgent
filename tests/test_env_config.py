@@ -17,7 +17,7 @@ def checkout(tmp_path, monkeypatch):
     # test.sh exports its own resolved paths; each fixture represents a new clone
     # opened in a clean terminal, rather than inheriting that parent's overrides.
     for key in list(os.environ):
-        if key.startswith(('SPECAGENT_', 'MAIN_', 'DRAFT_', 'CLIENT_', 'SERVER_', 'CONDA_')) or key in {
+        if key.startswith(('SPECAGENT_', 'MAIN_', 'DRAFT_', 'CLIENT_', 'SERVER_', 'CONDA_', 'PYTORCH_', 'VLLM_')) or key in {
             'RESOURCE_DIR', 'LMUData', 'CODE_ROOT', 'CONDA_INIT', 'SPECTOOL_ROOT', 'SANDBOX_ROOT',
         }:
             monkeypatch.delenv(key)
@@ -168,3 +168,25 @@ def test_dependency_check_does_not_accept_a_broken_native_import(monkeypatch):
     monkeypatch.setattr(check.importlib, 'import_module', fail)
     with pytest.raises(ImportError, match='native library missing'):
         check.main()
+
+
+def test_evalkit_optional_env_never_overwrites_exported_configuration(tmp_path, monkeypatch, caplog):
+    import ast
+    from types import SimpleNamespace
+    source = ROOT / 'spectool/VLMEvalKit/vlmeval/__init__.py'
+    # Exercise the real loader without importing all optional ML backends.
+    tree = ast.parse(source.read_text())
+    function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'load_env')
+    namespace = {'__file__': str(tmp_path / 'vlmeval/__init__.py')}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), str(source), 'exec'), namespace)
+    namespace['load_env']()
+    assert not any(record.levelname == 'ERROR' for record in caplog.records)
+    (tmp_path / '.env').write_text('')
+    monkeypatch.setitem(sys.modules, 'dotenv', SimpleNamespace(dotenv_values=lambda _: {
+        'SPECAGENT_TEST_EXISTING': 'stale-vendored-value', 'SPECAGENT_TEST_NEW': 'legacy-value'}))
+    monkeypatch.setenv('SPECAGENT_TEST_EXISTING', 'root-config-value')
+    monkeypatch.delenv('SPECAGENT_TEST_NEW', raising=False)
+    namespace['load_env']()
+    assert os.environ['SPECAGENT_TEST_EXISTING'] == 'root-config-value'
+    assert os.environ['SPECAGENT_TEST_NEW'] == 'legacy-value'
+    os.environ.pop('SPECAGENT_TEST_NEW')

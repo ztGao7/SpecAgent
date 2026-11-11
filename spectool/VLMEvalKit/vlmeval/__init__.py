@@ -17,15 +17,16 @@ def load_env():
         datefmt='%Y-%m-%d %H:%M:%S')
     pth = Path(__file__).parent.parent / '.env'
     if not pth.exists():
-        logging.error(f'Did not detect the .env file at {pth}, failed to load.')
+        # Public launchers export the root .env. A second, vendored .env is optional.
+        logging.debug(f'No optional EvalKit .env at {pth}; using exported configuration.')
         return
 
     from dotenv import dotenv_values
     values = dotenv_values(str(pth))
     for k, v in values.items():
         if v is not None and len(v):
-            os.environ[k] = v
-    logging.info(f'API Keys successfully loaded from {pth}')
+            os.environ.setdefault(k, v)
+    logging.info(f'Optional EvalKit configuration loaded from {pth}')
 
 
 load_env()
