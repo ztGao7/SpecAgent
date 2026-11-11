@@ -2,7 +2,7 @@
 
 ## `.env` 与启动流程修复验证
 
-- 配置入口自动读取根目录 `.env`，支持外部配置文件；安装、按完整前缀激活环境、下载模型、读取 TSV 和启动测试使用同一组路径。macOS 与 Linux 新客户端环境当前均通过 **128 项** CPU 回归。
+- 配置入口自动读取根目录 `.env`，支持外部配置文件；安装、按完整前缀激活环境、下载模型、读取 TSV 和启动测试使用同一组路径。macOS 与 Linux 新客户端环境当前均通过 **131 项** CPU 回归。
 - 在独立前缀新建 Python 3.10 环境，运行 `setup_env.sh --core-only`，随后按 `client-linux.lock` 完整安装客户端并安装本仓库 EvalKit。Redis 使用已有兼容二进制的独立副本作为系统依赖。完整安装通过兼容检查；decord 的已知 cp36 wheel 标签提示单独保留，其余依赖错误仍会失败。
 - 修复启动前对 vLLM 版本的误判：检查 distribution metadata 的 `0.25.1+cu129` 和实际 Torch/CUDA 版本，而不是要求 `vllm.__version__` 带本地版本后缀。CUDA 检查只访问本次选择的 GPU。
 - 真实 Spectool / VStar 测试使用 Main=Qwen3.8-27B-FP8、Draft=Qwen3.5-9B、两张 RTX 4090（此机器单卡约 48/45 GiB），上下文 32768、TP=1+1。固定第一个 index 得到有效预测 `A`，失败率 0/1，单样本推理墙钟约 9.07 秒；新服务在退出后清理。该轮服务端使用现有 vLLM 环境，未声称完成全新服务环境安装或 A800 验证。
@@ -10,6 +10,21 @@
 - 从 GitHub 提交 `ffe621d` 全新 clone，未修改源文件，只配置被 Git 忽略的 `.env`，运行客户端安装、路径检查、默认 CPU 测试（128 项通过）及 README 的 Spectool / VStar 两样本命令。两个样本均生成预测，推理失败 0，退出后本次服务自动清理。该轮仍使用新客户端与已有服务环境。
 - 同一 GitHub clone 的模型离线检查通过：Qwen3.8-27B-FP8 为 66 个分片 / 1606 个索引 tensor，Qwen3.5-9B 为 4 个分片 / 775 个索引 tensor。数据下载入口成功复用配置目录中的 VStar TSV（191 行），未重复下载。
 - 上述 GPU 测试仅检查推理流程，不计算准确率；首次服务启动含编译、视觉预热，耗时数分钟，不能把单样本推理时间当作部署总耗时。
+
+## 新建客户端与服务环境的最终验收
+
+运行代码提交：`67a138b679e5d042cb7da4581653b2e81a93eaaa`。代码由公开 GitHub 仓库 clone / fast-forward 更新取得，工作树无源文件修改；仅配置被 Git 忽略的根目录 `.env`。
+
+- 两个环境均在独立前缀创建并安装依赖，未克隆或修改原生产环境。客户端 Python 3.10；服务端 Python 3.12.16、vLLM distribution `0.25.1+cu129`、Torch `2.11.0+cu129`、TorchCodec `0.15.0+cu129`。安装器、客户端导入、服务端 CUDA 运算及实际 serving CLI 导入检查通过。
+- 使用国内 pip / PyTorch 镜像与独立安装包缓存；vLLM 官方 wheel 的 SHA256 校验通过。模型权重和 TSV 复用已有文件，Redis 前置依赖为现有兼容二进制的独立副本。
+- 根目录 `.env` 自动加载；未手动 source，也未额外手工修改模型服务命令。模型、bench、环境和输出目录均按配置读取。
+- `bash scripts/run_test.sh`：**131 passed**，包含真实 Unix socket 绑定与连接、错误清理目标拒绝、`.env` 与导出变量的优先级回归。
+- `bash scripts/run_test.sh --method spectool --bench vstar --samples 2`：两个样本完成并输出 `A`、`C`，推理失败 **0 个**，无准确率评判。模型为 Main Qwen3.8-27B-FP8 + Draft Qwen3.5-9B，GPU 4 / 5，各 TP=1，上下文 32768；使用新环境的独立编译缓存。推理墙钟约 49.95 秒，含 EvalKit 初始化的评测步骤约 60 秒，首次模型服务启动与编译另需数分钟。
+- 退出后停止本次模型、Redis、sandbox 服务，并清理本次私有短通信目录。模型、benchmark 和预测记录保留。
+
+本次实际修复包括：安装与激活环境前缀不一致、`.env` 未自动加载、模型下载目录不跟随配置、Conda Redis 包不可用、vLLM 版本字符串误判、TorchCodec 默认 CUDA 13 wheel 与 CUDA 12.9 栈不匹配，以及长工作路径超过 Unix socket 长度上限。临时通信目录由脚本自动选择并按 run / service 隔离。
+
+验收范围是这台扩容 RTX 4090 服务器上的小样本启动流程；未验证 A800、16 卡并发调度、完整 benchmark 矩阵或准确率 / 加速比。
 
 ## 初次发布的历史检查
 
