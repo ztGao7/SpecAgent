@@ -1,31 +1,20 @@
-# SpecEyes visual-agent adapter
+# SpecEyes visual-agent adaptation
 
-Official implementation: [MAC-AutoML/SpecEyes](https://github.com/MAC-AutoML/SpecEyes), pinned in `upstream/` to the commit recorded in the repository's `UPSTREAMS.json`.
+Official implementation: [MAC-AutoML/SpecEyes](https://github.com/MAC-AutoML/SpecEyes), pinned in `upstream/` to the commit in `UPSTREAMS.json`.
 
-## Files
+The maintained adaptation now lives in the complete runtime:
 
-```text
-overlay/
-  spectool_agent/speceyes.py
-  VLMEvalKit/vlmeval/api/spectool_speceyes.py
-upstream/                          # official Git submodule
+- `spectool/spectool_agent/speceyes.py`: router, Draft confidence gate and Main-agent fallback orchestration.
+- `spectool/VLMEvalKit/vlmeval/api/spectool_speceyes.py`: evaluation wrapper.
+
+The former duplicate overlay files were removed to avoid maintaining two copies. The shared runtime and sandbox are included in this revision.
+
+Follow [the quickstart](../../docs/QUICKSTART.md), then run:
+
+```bash
+bash scripts/run_test.sh --method speceyes --bench vstar --samples 2
 ```
 
-The overlay contains baseline-specific files only. It preserves the existing package layout because the orchestration uses relative imports from the shared runtime. It is not an independently installable Python package.
+The adaptation uses vLLM HTTP requests and shared visual-tool helpers instead of upstream local Transformers execution. Routing, confidence, batch barriers and fallback settings are defined in the maintained implementation. A small smoke run is not a throughput benchmark or a claim of unchanged upstream execution.
 
-## Adaptation behavior
-
-1. Main routes the question using the official reliability prompt.
-2. Direct-answer candidates are sent to Draft with top-K log probabilities.
-3. The SpecEyes confidence gate decides whether to accept Draft's answer.
-4. Remaining samples enter the shared Main-agent sandbox fallback.
-
-The adapter uses OpenAI-compatible vLLM requests and the shared visual-tool runtime rather than the upstream implementation's local Transformers execution. See the source for batch barriers, concurrency, image handling and runtime overrides; do not treat this adaptation as an unchanged execution of upstream code.
-
-## Requirements and use
-
-To run the official baseline, initialize `upstream/` and follow its README.
-
-To run this visual-agent adaptation, an existing compatible common runtime containing `spectool_agent` and the patched `VLMEvalKit` is required. That runtime is deliberately not published in this release. The two overlay files belong at the matching paths within that runtime; registration and launching also come from that runtime. **Do not overwrite a live experimental runtime with this overlay.** Use a separate copy after version compatibility has been established.
-
-No standalone end-to-end execution or new benchmark result is claimed for this public tree.
+For the original upstream tasks, initialize `upstream/` and follow its README separately.

@@ -1,0 +1,16 @@
+{
+  "snapshot_date": "2026-11-11",
+  "description": "Research runtime with portable deployment edits; not a pristine upstream checkout.",
+  "files": {
+    "spectool/spectool_agent/agent.py": "6e96f119ed4679248584dee43cfb5bd6e6524d8aff5d39e0774e47e21e51377c",
+    "spectool/spectool_agent/speculative_agent.py": "79a8f1ce283fba024b4c6f68890d77d5f4130d2d2f1de7525e16b5bd84ece287",
+    "spectool/spectool_agent/model.py": "8c7bf98de6d2c86f1168ef657274dc47f89a01b0496fbf4111bfcbd58babd1f1",
+    "spectool/spectool_agent/draft_model.py": "7a955cb59e1a2d903065703390f15e5970691cadd5f9bfecbf0fc8ce661ec93b",
+    "spectool/spectool_agent/pool.py": "f569a4d6d35902265a37457ffa4a6de8d9a3139f57ac797fc69fb4b070338a03",
+    "spectool/spectool_agent/prompts.py": "4e09737bbde230509899588e1fb9a8f8772c197ec98cdc915380f0d72b3704c9",
+    "spectool/spectool_agent/prompt.py": "12abea58fbdabee181c2e95ae92dc62d0a9bf3030afa8bbfba0591cb54a84b74",
+    "spectool/spectool_agent/sandbox.py": "ba7c5678e41233dfaf62a24be73b0d5d5a6f6a825b4243c06f84ea9c1feb1b62",
+    "spectool/spectool_agent/tools.py": "3472e08f2e2d260ef88831b19d5a091a77456983f4c894aef4adc7d7d06f7bf2",
+    "spectool/spectool_agent/types.py": "cd94da000abe93cd9c93ee669effe7766f75ab10337dcb340a2c71a2cd905ff9"
+  }
+}

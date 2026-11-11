@@ -1,29 +1,13 @@
-# Initial baseline-only release
+# Complete runtime and setup release
 
-## Included
+This revision includes Spectool's runtime, shared model/tool/image/prompt helpers, the local sandbox, the modified VLMEvalKit, and environment/download/test entry points. It supersedes the initial baseline-only release, whose shared runtime was intentionally omitted.
 
-- Pinned Git submodule references to the official SpecEyes and SpecReason repositories.
-- SpecEyes-specific orchestration and VLMEvalKit wrapper, kept as an overlay so their existing package-relative imports remain unchanged.
-- The SpecReason visual-agent controller, endpoint client, score prompt, wrapper, runner, runtime-freezing helper and CPU tests.
-- Setup boundaries and provenance documentation.
+The original research behavior is retained. Deployment changes remove fixed machine paths, read Redis configuration from the environment, bind services to loopback, clean dependency-file conflict markers and add portable environment initialization. The quick entry point explicitly uses a 32768 context, one evaluation worker and data-URL image transport; these are smoke-test settings, not a reproduction of any historical timed experiment.
 
-## Excluded
+SpecReason runs its own sequential controller on a checksum-recorded copy of the shared runtime. Its launcher uses the active environment, model IDs are explicit, and its data/media directories are configurable. The shared service launcher now supports dispatch to that controller without importing Spectool's speculative decision policy into the baseline.
 
-- The Spectool speculative controller, model/tool helpers, generation prompts, pool, sandbox implementation and launcher.
-- Any frozen `runtime/` copy, including copies hidden inside other method directories.
-- Vendored VLMEvalKit, private repository history, environment files, credentials and machine-specific paths.
-- Model weights, benchmarks, trajectories, caches, experiment logs and backups.
-- AgentVista experiments and feasibility work, which are outside this release.
+The default smoke suite covers startup failures and selected current protocol/transport/baseline tests. The historical full test suite is retained and has known retired-interface failures. No tests were deleted to make the full suite appear green.
 
-The baseline adapters still import modules named `spectool_agent` and `vlmeval`. These imports identify external dependencies; the dependency implementations are not part of this tree. They have intentionally not been replaced by new approximations.
+Excluded: private Git history, model weights, benchmark contents, outputs/trajectories, generated frozen runtimes, caches, backups, credentials, environment files and experiment-specific queues. AgentVista feasibility experiments are not included.
 
-## Portability edits
-
-Baseline inference, scoring, routing and confidence logic are preserved. Changes to the SpecReason preparation/runner only:
-
-- `freeze_runtime.py --source` is required instead of defaulting to a private server path.
-- `run_specreason.sh` uses the active Python environment and does not source a private Conda initializer.
-- `--main-model` and `--draft-model` are required and must match the serving endpoints' model IDs.
-- Dataset location defaults to `~/LMUData`; generated media defaults under the selected output directory. Both can be overridden through the existing environment settings.
-
-The common runtime must be supplied separately before running adapter tests or complete visual-agent evaluations. Installing the latest stock VLMEvalKit alone does not provide the private agent helpers or timing interface these adapters expect.
+The vendored VLMEvalKit keeps its Apache-2.0 license and upstream notices. The recorded original upstream pin in its VENDORED.md is historical; this tree includes later local modifications and should not be treated as an untouched checkout at that pin.

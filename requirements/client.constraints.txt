@@ -1,0 +1,11 @@
+# Core versions observed on source server, 2026-11-11.
+# torchaudio is not required here; source server audio packages are not copied.
+torch==2.12.1
+torchvision==0.27.1
+transformers==5.12.1
+huggingface-hub==1.21.0
+datasets==5.0.0
+numpy==2.2.6
+pandas==2.3.3
+openai==2.44.0
+pillow==12.2.0

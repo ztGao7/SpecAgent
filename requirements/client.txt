@@ -1,0 +1,8 @@
+-c client.constraints.txt
+-r core.txt
+-r ../spectool/VLMEvalKit/requirements.txt
+jupyter-client==8.9.1
+ipython==8.39.0
+seaborn
+pytesseract
+easyocr

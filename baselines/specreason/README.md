@@ -4,19 +4,25 @@ Official implementation: [ruipeterpan/specreason](https://github.com/ruipeterpan
 
 The local `specreason_adapter/` implements sequential **Draft → Main score → accept or Main single-turn rewrite → Draft**. Rejected candidates are not executed. Main and Draft share the common runtime's task prompt; a separate constrained 0–9 scoring request evaluates each candidate before execution. The visual-agent task prompt, native tool calls and constrained digit scoring are adaptations of upstream SpecReason.
 
+For the automatic setup and small-sample launcher, see [the quickstart](../../docs/QUICKSTART.md).
+
+```bash
+bash scripts/run_test.sh --method specreason --bench vstar --samples 2
+```
+
 ## Dependencies
 
-The adapter requires Python 3.10+, OpenAI SDK, Pillow and a compatible common agent/VLMEvalKit runtime. **The common runtime is not included in this release.** The prompt, parser, image processing, tool sessions and timing helpers are imported from that separately supplied runtime.
+The adapter requires Python 3.10+, OpenAI SDK, Pillow and a compatible common agent/VLMEvalKit runtime. The common runtime is now included at `spectool/` in the repository root. The prompt, parser, image processing, tool sessions and timing helpers are imported from that included runtime.
 
 For the original upstream task and installation, initialize `upstream/` and follow its own README. Those instructions are separate from the visual-agent adapter.
 
-## Preparing an existing private runtime
+## Preparing the included runtime
 
-Only if you already have the compatible common runtime:
+For manual execution, freeze the included runtime first:
 
 ```bash
 cd baselines/specreason
-python freeze_runtime.py --source /path/to/common-runtime
+python freeze_runtime.py --source ../../spectool
 python -m unittest discover -s tests -v
 ```
 
@@ -41,4 +47,4 @@ bash run_specreason.sh --check-only --data vstar \
 
 Available controls include `--threshold`, `--max-turns`, `--max-tool-calls`, `--max-tokens`, `--max-total-output-tokens`, `--wall-seconds` and role-specific thinking flags. `--method main-only` and `--method draft-only` provide matched neutral-prompt controls. Defaults and accounting are recorded by the runner. No total output-token cap is active when `--max-total-output-tokens` is zero.
 
-The included tests use mock model/tool responses, but still import the common runtime. They are not standalone tests in a fresh clone. No new GPU evaluation is claimed by this release.
+The included tests use mock model/tool responses, but still import the common runtime. Prepare the included runtime as shown above before running them. No new GPU evaluation is claimed by this release.

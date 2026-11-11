@@ -22,3 +22,13 @@ outputs/
 results/
 raw_trajectories/
 .runs/
+
+# Complete runtime: retain only code and documentation
+.local/
+.runs/
+runtime_logs/
+spectool/data/
+spectool/outputs/
+spectool/results/
+spectool/result/
+sandbox_repo/uvilog/
