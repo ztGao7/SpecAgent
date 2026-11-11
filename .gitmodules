@@ -4,3 +4,6 @@
 [submodule "baselines/specreason/upstream"]
 	path = baselines/specreason/upstream
 	url = https://github.com/ruipeterpan/specreason.git
+[submodule "baselines/dreamr/upstream"]
+	path = baselines/dreamr/upstream
+	url = https://github.com/HuYunhai-Alex/DREAM-R.git

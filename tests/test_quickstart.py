@@ -49,14 +49,16 @@ def test_model_run_without_dataset_fails_before_creating_run_directory(tmp_path)
     assert not (work / "runs").exists()
 
 
-@pytest.mark.parametrize("method", ["spectool", "speceyes", "specreason", "baseline", "direct", "draft-only"])
+@pytest.mark.parametrize("method", ["spectool", "speceyes", "specreason", "dreamr", "baseline", "direct", "draft-only"])
 def test_each_method_has_side_effect_free_plan(method, tmp_path):
     work = tmp_path / "not-created"
-    env = dict(os.environ, SPECAGENT_WORK_ROOT=str(work))
+    env = dict(os.environ, SPECAGENT_WORK_ROOT=str(work), SPECAGENT_EVAL_DRIVER="stale-driver")
     result = subprocess.run(["bash", str(ROOT / "scripts/run_test.sh"), "--method", method, "--dry-run"],
                             env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert '"samples": 2' in result.stdout
+    expected_driver = method if method in {"specreason", "dreamr"} else "vlmeval"
+    assert f'"eval_driver": "{expected_driver}"' in result.stdout
     assert "--index-file" in result.stdout
     assert not work.exists()
 

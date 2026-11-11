@@ -8,6 +8,10 @@
 
 The official repositories are pinned Git submodules at `baselines/speceyes/upstream` and `baselines/specreason/upstream`. Their code remains governed by their own upstream license terms and notices. No license is substituted by this repository. See UPSTREAMS.json for repository URLs and exact commits.
 
+## DREAM-R
+
+The official [HuYunhai-Alex/DREAM-R](https://github.com/HuYunhai-Alex/DREAM-R) repository is pinned as the optional `baselines/dreamr/upstream` submodule; its own terms and notices apply. The local visual-tool adapter is derived from the existing local SpecReason transport/controller structure and adapts DREAM-R threshold verification and parallel rewrite. Verification prompt attribution is retained in `prompts.py`. SAPO training and the original multi-step inference pipeline are not bundled into the adapter runtime.
+
 ## Local research code
 
 No project-wide license for the original/local research code has been selected yet. Publishing these files does not add a license grant beyond any existing applicable file-level or upstream terms.

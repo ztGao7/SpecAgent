@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--method", choices=["offline", "spectool", "speceyes", "specreason", "baseline", "direct", "draft-only"], default="offline")
+    parser.add_argument("--method", choices=["offline", "spectool", "speceyes", "specreason", "dreamr", "baseline", "direct", "draft-only"], default="offline")
     parser.add_argument("--bench", choices=DATASETS, default="vstar")
     parser.add_argument("--samples", type=int, default=2)
     parser.add_argument("--full", action="store_true", help="Use the full selected dataset")
@@ -67,8 +67,7 @@ def main():
                IMAGE_TRANSPORT="data", SPECTOOL_IMAGE_TRANSPORT="data", LMUData=str(data), RESOURCE_DIR=str(resource))
     # Data URLs work with both freshly started and externally supplied services;
     # they do not depend on those services' allowed-local-media-path setting.
-    if args.method == "specreason":
-        env["SPECAGENT_EVAL_DRIVER"] = "specreason"
+    env["SPECAGENT_EVAL_DRIVER"] = args.method if args.method in {"specreason", "dreamr"} else "vlmeval"
     command = ["bash", str(ROOT / "start_test.sh"), f"--{selected_method}",
                "--bench", args.bench, "--mode", "infer", "--api-nproc", "1",
                "--work-dir", str(output)]
@@ -77,6 +76,7 @@ def main():
     if args.reuse_services:
         command += ["--reuse-services"]
     print(json.dumps({"method": args.method, "dataset": dataset,
+                      "eval_driver": env["SPECAGENT_EVAL_DRIVER"],
                       "samples": "all" if args.full else args.samples,
                       "output": str(output), "main_gpus": env["MAIN_GPUS"],
                       "main_tp": env["MAIN_TP"], "draft_gpus": env["DRAFT_GPUS"],
@@ -94,7 +94,7 @@ def main():
     main_model = Path(env.get("MAIN_MODEL_PATH", resource / "Qwen/Qwen3.5-27B"))
     draft_model = Path(env.get("DRAFT_MODEL_PATH", resource / "Qwen/Qwen3.5-9B"))
     required_models = [draft_model] if args.method == "draft-only" else [main_model]
-    if args.method in {"spectool", "speceyes", "specreason"}:
+    if args.method in {"spectool", "speceyes", "specreason", "dreamr"}:
         required_models.append(draft_model)
     for model in required_models:
         if not (model / "config.json").is_file():
@@ -118,8 +118,8 @@ def main():
     if not args.full:
         subprocess.run([python, str(ROOT / "scripts/make_smoke_indices.py"), "--dataset", dataset,
                         "--table", str(table), "--count", str(args.samples), "--output", str(indices)], check=True)
-    if args.method == "specreason":
-        adapter = ROOT / "baselines/specreason"
+    if args.method in {"specreason", "dreamr"}:
+        adapter = ROOT / "baselines" / args.method
         if not (adapter / "runtime/manifest.json").exists():
             subprocess.run([python, str(adapter / "freeze_runtime.py"), "--source", str(ROOT / "spectool")], check=True)
     subprocess.run(command, env=env, check=True)

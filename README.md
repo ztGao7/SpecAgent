@@ -1,6 +1,6 @@
 # SpecAgent
 
-本仓库包含 Spectool，以及 SpecEyes、SpecReason 在视觉工具任务上的基线适配实现，提供基于 vLLM 和 Python sandbox 的本地评测流程。
+本仓库包含 Spectool，以及 SpecEyes、SpecReason、DreamR 在视觉工具任务上的基线适配实现，提供基于 vLLM 和 Python sandbox 的本地评测流程。
 
 **首次使用请看：[环境配置、模型下载与启动测试](docs/QUICKSTART.md)。** 公共运行时和 sandbox 已包含在仓库中，无需访问原实验服务器。
 
@@ -51,6 +51,7 @@ bash scripts/run_test.sh --method spectool --bench vstar --samples 2
 | --- | --- |
 | Spectool | `bash scripts/run_test.sh --method spectool --samples 2` |
 | SpecEyes 适配实现 | `bash scripts/run_test.sh --method speceyes --samples 2` |
+| DreamR 视觉工具适配 | `bash scripts/run_test.sh --method dreamr --samples 2` |
 | SpecReason 适配实现 | `bash scripts/run_test.sh --method specreason --samples 2` |
 | Main 工具 Agent 基线 | `bash scripts/run_test.sh --method baseline --samples 2` |
 | Main 直接回答基线 | `bash scripts/run_test.sh --method direct --samples 2` |
@@ -74,6 +75,7 @@ start_test.sh               # 完整的服务启动与评测编排脚本
 spectool/spectool_agent/    # Spectool 与公共模型、工具、提示词代码
 spectool/VLMEvalKit/        # 包含本项目修改的评测框架
 sandbox_repo/               # 本地 Redis / Jupyter 代码执行服务
+baselines/dreamr/           # DreamR 阈值验证与并行改写适配
 baselines/specreason/       # 独立 SpecReason 控制器与运行时快照准备工具
 baselines/speceyes/         # 适配说明及固定版本的官方代码子模块
 ```

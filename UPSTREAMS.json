@@ -8,5 +8,10 @@
     "repository": "https://github.com/ruipeterpan/specreason",
     "commit": "6fd5b12929590e6824957191cc2e40a93d021339",
     "path": "baselines/specreason/upstream"
+  },
+  "dreamr": {
+    "repository": "https://github.com/HuYunhai-Alex/DREAM-R",
+    "commit": "8a37dd2d7fd5659d28538f46419660b29a193463",
+    "path": "baselines/dreamr/upstream"
   }
 }

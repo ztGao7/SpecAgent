@@ -9,7 +9,7 @@ if [[ "${1:-}" == --full ]]; then
         --continue-on-collection-errors "$@"
 fi
 # CPU-only release smoke suite. Historical tests remain accessible with --full.
-exec "$CLIENT_PYTHON" -m pytest tests \
+exec "$CLIENT_PYTHON" -m pytest tests baselines/dreamr/tests \
     spectool/tests/spectool_agent/test_model_parsers.py \
     spectool/tests/spectool_agent/test_tool_protocol.py \
     spectool/tests/spectool_agent/test_direct_alignment.py \

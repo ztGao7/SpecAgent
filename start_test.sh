@@ -134,6 +134,7 @@ usage() {
         "" \
         "Modes:" \
         "  --spectool              Main 27B + draft 9B speculative eval (default)" \
+        "  --dreamr                DREAM-R visual-tool adapter (Main + Draft)" \
         "  --speceyes               27B router + 9B confidence gate + 27B sandbox fallback" \
         "                          (router=10, draft=20, fallback=512 tokens; turns use --max-steps)" \
         "  --baseline" \
@@ -224,6 +225,7 @@ parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --spectool) RUN_MODE=spectool; shift ;;
+            --dreamr) RUN_MODE="spectool"; SPECAGENT_EVAL_DRIVER=dreamr; shift ;;
             --speceyes) RUN_MODE=speceyes; shift ;;
             --baseline) RUN_MODE=baseline; shift ;;
             --direct) RUN_MODE=direct; shift ;;
@@ -1193,7 +1195,7 @@ run_eval() {
             export SPECTOOL_DRAFT_MODEL="$DRAFT_MODEL_PATH"
             export SPECTOOL_DRAFT_KEY="${SPECTOOL_DRAFT_KEY:-EMPTY}"
         fi
-        if [[ "${SPECAGENT_EVAL_DRIVER:-vlmeval}" == specreason ]]; then
+        if [[ "${SPECAGENT_EVAL_DRIVER:-vlmeval}" == specreason || "${SPECAGENT_EVAL_DRIVER:-vlmeval}" == dreamr ]]; then
             local -a spec_args
             spec_args=(--execute --data "$BENCH" --work-dir "$WORK_DIR"
                 --main-model "$MAIN_MODEL_PATH" --draft-model "$DRAFT_MODEL_PATH"
@@ -1203,6 +1205,11 @@ run_eval() {
                 --max-tool-calls "$MAX_STEPS" --max-tokens "${SPECTOOL_MAX_TOKENS:-4096}"
                 --threshold "${SPECREASON_THRESHOLD:-7}")
             [[ -z "$INDEX_FILE" ]] || spec_args+=(--index-file "$INDEX_FILE")
+            if [[ "$SPECAGENT_EVAL_DRIVER" == dreamr ]]; then
+                spec_args+=(--method dreamr --accept-threshold "${DREAMR_ACCEPT_THRESHOLD:-0.7}"
+                    --first-main-turns "${DREAMR_FIRST_MAIN_TURNS:-0}")
+                exec setsid bash "$CODE_ROOT/baselines/dreamr/run_dreamr.sh" "${spec_args[@]}"
+            fi
             exec setsid bash "$CODE_ROOT/baselines/specreason/run_specreason.sh" "${spec_args[@]}"
         fi
         exec setsid bash scripts/eval.sh
@@ -1222,6 +1229,11 @@ print_summary() {
     local draft_url sandbox_url decision_gates
     sandbox_url="http://127.0.0.1:${SANDBOX_PORT}/run_jupyter"
     decision_gates="QJ=${QUALITY_JUDGE_THRESHOLD} answerability=${ANSWERABILITY_THRESHOLD}"
+    if [[ "${SPECAGENT_EVAL_DRIVER:-}" == dreamr ]]; then
+        decision_gates="DREAM-R accept=${DREAMR_ACCEPT_THRESHOLD:-0.7} (independent controller)"
+    elif [[ "${SPECAGENT_EVAL_DRIVER:-}" == specreason ]]; then
+        decision_gates="SpecReason threshold=${SPECREASON_THRESHOLD:-7} (independent controller)"
+    fi
     if [[ "$RUN_MODE" == direct ]]; then
         sandbox_url="<disabled: direct answer>"
         decision_gates="<disabled: one ordinary Main request>"
@@ -1234,6 +1246,7 @@ print_summary() {
     printf '%s\n' \
         "Run ID      : $RUN_ID" \
         "Run mode    : $RUN_MODE" \
+        "Eval driver : ${SPECAGENT_EVAL_DRIVER:-vlmeval}" \
         "Run dir     : $RUN_DIR" \
         "Main URL    : http://127.0.0.1:${MAIN_PORT}/v1" \
         "Draft URL(s): $draft_url" \
