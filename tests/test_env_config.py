@@ -190,3 +190,43 @@ def test_evalkit_optional_env_never_overwrites_exported_configuration(tmp_path, 
     assert os.environ['SPECAGENT_TEST_EXISTING'] == 'root-config-value'
     assert os.environ['SPECAGENT_TEST_NEW'] == 'legacy-value'
     os.environ.pop('SPECAGENT_TEST_NEW')
+
+
+def ipc_helper():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('vllm_ipc', ROOT / 'scripts/vllm_ipc.py')
+    helper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helper)
+    return helper
+
+
+def test_long_work_directory_can_bind_a_real_unix_socket(tmp_path):
+    import socket
+    import uuid
+    helper = ipc_helper()
+    directory = helper.create(tmp_path / ('long-work-directory-' * 10) / 'tmp', 'test-long-path')
+    try:
+        assert len(os.fsencode(str(directory))) <= helper.MAX_DIR_BYTES
+        address = str(directory / str(uuid.uuid4()))
+        with socket.socket(socket.AF_UNIX) as listener, socket.socket(socket.AF_UNIX) as client:
+            listener.bind(address)
+            listener.listen(1)
+            client.connect(address)
+            connection, _ = listener.accept()
+            with connection:
+                client.sendall(b'ok')
+                assert connection.recv(2) == b'ok'
+    finally:
+        helper.cleanup(directory, 'test-long-path')
+    assert not directory.exists()
+
+
+def test_ipc_cleanup_refuses_another_run(tmp_path):
+    helper = ipc_helper()
+    directory = helper.create(tmp_path / 'tmp', 'owner-run')
+    try:
+        with pytest.raises(ValueError, match='not owned by this run'):
+            helper.cleanup(directory, 'another-run')
+        assert directory.exists()
+    finally:
+        helper.cleanup(directory, 'owner-run')

@@ -563,6 +563,22 @@ stop_pid_file() {
     rm -f "$file"
 }
 
+cleanup_vllm_ipc_dirs() {
+    local record path service
+    for record in "$RUN_DIR"/pids/vllm_*.ipc_dir; do
+        [[ -f "$record" ]] || continue
+        IFS= read -r path < "$record" || true
+        service="${record##*/vllm_}"
+        service="${service%.ipc_dir}"
+        if "$SERVER_PYTHON" "$CODE_ROOT/scripts/vllm_ipc.py" cleanup \
+                --path "$path" --tag "$RUN_ID-$service"; then
+            rm -f "$record"
+        else
+            log "WARNING: could not clean private IPC directory from $record"
+        fi
+    done
+}
+
 stop_recorded_services() {
     local name
     stop_pid_file "$(pid_file eval)"
@@ -576,6 +592,7 @@ stop_recorded_services() {
     fi
     stop_pid_file "$(pid_file vllm_main)"
     stop_pid_file "$(pid_file sandbox)"
+    cleanup_vllm_ipc_dirs
 }
 
 cancel_cleanup_job() {
@@ -652,6 +669,7 @@ cleanup_services_on_exit() {
             stop_pid_file "$(pid_file sandbox)"
             cleanup_sandbox_temp_dir
         fi
+        cleanup_vllm_ipc_dirs
         log "Services stopped for run $RUN_ID"
     fi
     if [[ "$RUN_EVAL" == true ]]; then
@@ -857,7 +875,7 @@ resolve_gpu_numa_binding() {
 
 start_vllm() {
     local name="$1" gpus="$2" model_path="$3" port="$4" tp="$5" mem="$6" max_len="$7" max_batched_tokens="$8" extra="$9"
-    local lf pf service_pid numa_info numa_status numa_node numa_cpus=""
+    local lf pf service_pid numa_info numa_status numa_node numa_cpus="" ipc_dir
     lf="$(log_file "vllm_${name}")"
     pf="$(pid_file "vllm_${name}")"
     if probe_http "http://127.0.0.1:${port}/v1/models"; then
@@ -896,11 +914,15 @@ start_vllm() {
     else
         log "vLLM $name NUMA binding disabled"
     fi
-    log "Starting vLLM $name on port $port, GPUs=$gpus, TP=$tp"
+    ipc_dir="$("$SERVER_PYTHON" "$CODE_ROOT/scripts/vllm_ipc.py" create \
+        --tmp-root "$TMPDIR" --tag "$RUN_ID-$name" --root "${SPECAGENT_IPC_ROOT:-}")"
+    printf '%s\n' "$ipc_dir" > "$RUN_DIR/pids/vllm_${name}.ipc_dir"
+    log "Starting vLLM $name on port $port, GPUs=$gpus, TP=$tp, IPC=$ipc_dir"
     (
         local -a extra_args vllm_cmd
         source "$CONDA_INIT"
         specagent_activate_server
+        export VLLM_RPC_BASE_PATH="$ipc_dir"
         export VLLM_USE_FLASHINFER_SAMPLER="${VLLM_USE_FLASHINFER_SAMPLER:-0}"
         export VLLM_REGEX_COMPILATION_TIMEOUT_S="${VLLM_REGEX_COMPILATION_TIMEOUT_S:-60}"
         if [[ -d "$VLLM_SERVER_PYTHONPATH" ]]; then

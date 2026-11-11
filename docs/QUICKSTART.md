@@ -192,6 +192,8 @@ bash scripts/run_test.sh --method spectool --bench vstar --full
 
 `start_test.sh --help` 是完整服务编排入口，支持 GPU/TP、端口、图像、请求/步数预算及门限等设置。快速入口额外固定了 32768 上下文、单样本并发、每个服务最多 2 条在途序列和 data URL 图片传输，便于新机器检查；这些是快速检查配置，不应与历史全量实验混用后直接比较耗时。
 
+工作目录路径较长也可使用：脚本为每个 vLLM 服务自动选择数据盘上可写的短通信目录，避免 Unix socket 路径超过系统限制，结束后只清理本次创建的目录。若自动选择失败，可在 `.env` 指定短的可写父目录，例如 `SPECAGENT_IPC_ROOT=/data/your-user/ipc`。模型、数据和编译缓存仍使用原配置路径。
+
 保留服务、暂不评测时可使用 `bash start_test.sh --spectool --services-only`。该高级模式会保留服务进程和 `.runs/<run-id>/pids` 记录，需自行管理。日常小测优先使用会自动清理自身服务的 `scripts/run_test.sh`。
 
 | 问题 | 检查 |
