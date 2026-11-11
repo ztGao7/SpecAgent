@@ -2,7 +2,7 @@
 
 ## `.env` 与启动流程修复验证
 
-- 配置入口自动读取根目录 `.env`，支持外部配置文件；安装、按完整前缀激活环境、下载模型、读取 TSV 和启动测试使用同一组路径。macOS 与 Linux 新客户端环境当前均通过 **131 项** CPU 回归。
+- 配置入口自动读取根目录 `.env`，支持外部配置文件；安装、按完整前缀激活环境、下载模型、读取 TSV 和启动测试使用同一组路径。macOS 与 Linux 新客户端环境当前均通过 **149 项** CPU 回归。
 - 在独立前缀新建 Python 3.10 环境，运行 `setup_env.sh --core-only`，随后按 `client-linux.lock` 完整安装客户端并安装本仓库 EvalKit。Redis 使用已有兼容二进制的独立副本作为系统依赖。完整安装通过兼容检查；decord 的已知 cp36 wheel 标签提示单独保留，其余依赖错误仍会失败。
 - 修复启动前对 vLLM 版本的误判：检查 distribution metadata 的 `0.25.1+cu129` 和实际 Torch/CUDA 版本，而不是要求 `vllm.__version__` 带本地版本后缀。CUDA 检查只访问本次选择的 GPU。
 - 真实 Spectool / VStar 测试使用 Main=Qwen3.8-27B-FP8、Draft=Qwen3.5-9B、两张 RTX 4090（此机器单卡约 48/45 GiB），上下文 32768、TP=1+1。固定第一个 index 得到有效预测 `A`，失败率 0/1，单样本推理墙钟约 9.07 秒；新服务在退出后清理。该轮服务端使用现有 vLLM 环境，未声称完成全新服务环境安装或 A800 验证。
@@ -25,6 +25,18 @@
 本次实际修复包括：安装与激活环境前缀不一致、`.env` 未自动加载、模型下载目录不跟随配置、Conda Redis 包不可用、vLLM 版本字符串误判、TorchCodec 默认 CUDA 13 wheel 与 CUDA 12.9 栈不匹配，以及长工作路径超过 Unix socket 长度上限。临时通信目录由脚本自动选择并按 run / service 隔离。
 
 验收范围是这台扩容 RTX 4090 服务器上的小样本启动流程；未验证 A800、16 卡并发调度、完整 benchmark 矩阵或准确率 / 加速比。
+
+## DreamR 补充验收
+
+运行代码提交：`7f7897c3943be5fcfaec68321d271e9d444fc038`。从 GitHub 全新 clone，未初始化可选上游子模块，复制已有路径配置到根目录 `.env`，复用已独立安装的客户端和 vLLM 环境、现有模型与数据。冻结运行时由脚本自动生成，工作树无源文件修改。
+
+- 默认 CPU 入口：macOS 和 Linux 均 **149 passed**，包含 DreamR 阈值边界、候选历史隔离、并行改写、取消、正标签概率解析、请求参数及用量完整性标记测试；方法选择会覆盖遗留的 driver 环境变量。
+- `bash scripts/run_test.sh --method dreamr --bench vstar --samples 2`：固定索引 0、1，分别输出 `A`、`C`，均以 `stop_reason=answer` 完成，无推理失败。使用 Qwen3.8-27B-FP8 + Qwen3.5-9B、GPU 4 / 5、TP=1+1、32768 上下文，接受阈值 0.7，起始 Main-only 轮数 0。
+- 轨迹与 manifest 确认为 `mode=dreamr`：共 5 轮验证，正标签概率约 0.9424–0.9965，均接受 Draft；5 个 Main 改写请求都在验证之前启动，并在接受后取消。两个样本均标记 `usage_complete=false`，因为取消请求未返回完整 token 消耗。本轮未触发真实拒绝改写分支，该分支由 CPU 测试覆盖。
+- 两样本推理墙钟合计约 48.03 秒（不含部署与 benchmark judge）。只作小样本流程验收，不计算准确率或加速比。
+- 本次 Main、Draft、Redis、sandbox 已自动停止，两个私有通信目录均已删除，GPU 4–7 重新空闲；GPU 0–3 上的原实验未动。
+
+DreamR 是本仓库的视觉工具适配：实现同轮阈值验证与 Main 改写并行，工具依赖使跨轮串行；使用现有 Qwen 权重，没有运行 SAPO 训练或官方多步前瞻流水线。官方来源、固定提交及实现范围见 [DreamR 说明](../baselines/dreamr/README.md)。全量 benchmark、A800 和 16 卡并发尚未验证。
 
 ## 初次发布的历史检查
 

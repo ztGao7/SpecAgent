@@ -90,7 +90,7 @@ git submodule update --init --recursive
 
 ## 验证情况与使用范围
 
-默认 CPU 快速测试目前为 **131 项，已在 macOS 和 Linux 新客户端环境通过**，包括 `.env`、路径传递和启动入口回归。已从 GitHub clone，使用新建的客户端与 vLLM 环境、现有模型及数据，在两张扩容 4090（约 48/45 GiB）上完成 Spectool / VStar 两样本真实推理，两个样本均生成有效预测，本次服务及通信目录自动清理。模型为 Qwen3.8-27B-FP8 + Qwen3.5-9B。详细范围见[验证说明](docs/VALIDATION.md)。
+默认 CPU 快速测试目前为 **149 项，已在 macOS 和 Linux 新客户端环境通过**，包括 `.env`、路径传递和启动入口回归。已从 GitHub clone，使用新建的客户端与 vLLM 环境、现有模型及数据，在两张扩容 4090（约 48/45 GiB）上完成 Spectool / VStar 两样本真实推理，两个样本均生成有效预测，本次服务及通信目录自动清理。模型为 Qwen3.8-27B-FP8 + Qwen3.5-9B。DreamR 也已从 GitHub 全新 clone 后完成 VStar 两样本推理，核对了阈值验证、并行改写和取消记录。详细范围见[验证说明](docs/VALIDATION.md)。
 
 原始研究测试保留在 `spectool/tests` 中，其中部分仍针对已移除的接口，完整套件存在已知失败，可通过 `bash scripts/test.sh --full` 查看。目标机器仍需执行小样本验证；以上检查不代表全 benchmark 准确率、加速比或 A800 性能已经验证。
 
