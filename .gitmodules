@@ -1,0 +1,6 @@
+[submodule "baselines/speceyes/upstream"]
+	path = baselines/speceyes/upstream
+	url = https://github.com/MAC-AutoML/SpecEyes.git
+[submodule "baselines/specreason/upstream"]
+	path = baselines/specreason/upstream
+	url = https://github.com/ruipeterpan/specreason.git
