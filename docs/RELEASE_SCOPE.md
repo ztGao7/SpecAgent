@@ -6,10 +6,10 @@ The original research behavior is retained. Deployment changes remove fixed mach
 
 SpecReason runs its own sequential controller on a checksum-recorded copy of the shared runtime. Its launcher uses the active environment, model IDs are explicit, and its data/media directories are configurable. The shared service launcher now supports dispatch to that controller without importing Spectool's speculative decision policy into the baseline.
 
-The default smoke suite covers startup failures and selected current protocol/transport/baseline tests. The historical full test suite is retained and has known retired-interface failures. No tests were deleted to make the full suite appear green.
+The default smoke suite covers startup failures and selected current protocol/transport/baseline tests. Historical tests for retained features remain available and have known retired-interface failures. Tests belonging exclusively to explicitly removed scripts are removed with those scripts; this does not make the remaining full suite green.
 
 Excluded: private Git history, model weights, benchmark contents, outputs/trajectories, generated frozen runtimes, caches, backups, credentials, environment files and experiment-specific queues. AgentVista feasibility experiments are not included.
 
-脚本清理（2026-11-12）：删除未接入当前启动流程、测试或文档的旧随机子集工具 `spectool/scripts/make_subset.py` 和独立 F1 评分工具 `spectool/scripts/score_mmsearch_evalkit.py`。快速测试仍使用 `scripts/make_smoke_indices.py` 选择固定样本；保留启动器实际调用的评测入口、数据转换及 NUMA 脚本，以及已有回归测试依赖的 MMSearch judge 工具。`compat/` 中的 vLLM 兼容补丁继续保留。
+脚本清理（2026-11-12）：删除旧随机子集工具 `spectool/scripts/make_subset.py` 和独立 F1 评分工具 `spectool/scripts/score_mmsearch_evalkit.py`；按发布范围要求进一步移除 VDR 数据转换脚本 `build_vdr_tsv.py`、VDR 协议评分脚本 `score_mmsearch_vdr_judge.py` 及其专属测试。启动入口不再支持 `--bench vdr`，在部署服务前明确报错。快速测试仍使用 `scripts/make_smoke_indices.py` 选择固定样本；其余评测、数据转换、NUMA 脚本和 `compat/` 中的 vLLM 兼容补丁继续保留。
 
 The vendored VLMEvalKit keeps its Apache-2.0 license and upstream notices. The recorded original upstream pin in its VENDORED.md is historical; this tree includes later local modifications and should not be treated as an untouched checkout at that pin.

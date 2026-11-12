@@ -143,7 +143,7 @@ usage() {
         "  --draft-only            9B standard Agent baseline" \
         "" \
         "Eval options mirror spectool/scripts/eval.sh:" \
-        "  --bench NAME            vstar, vdr, mathvista, mathvision, mathvision_testmini, ..." \
+        "  --bench NAME            vstar, mathvista, mathvision, mathvision_testmini, ..." \
         "  --mode MODE             infer or all (default: infer)" \
         "  --api-nproc N           Eval workers; for --speceyes, parallel tool-agent items per batch (default: 1)" \
         "  --speceye-batch-size N  Questions per official SpecEyes funnel (default: 6)" \
@@ -1038,6 +1038,7 @@ start_sandbox() {
 }
 
 resolve_mode() {
+    [[ "$BENCH" != vdr ]] || die "VDR benchmark scripts have been removed; choose a supported --bench"
     [[ "$MAX_STEPS" =~ ^[1-9][0-9]*$ ]] \
         || die "MAX_STEPS must be a positive integer: $MAX_STEPS"
     [[ "$SAMPLE_WALL_BUDGET_SECONDS" =~ ^[0-9]+([.][0-9]+)?$ ]] \

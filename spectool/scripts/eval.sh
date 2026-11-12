@@ -46,7 +46,6 @@ SPECTOOL_API_TIMEOUT="${SPECTOOL_API_TIMEOUT:-180}"
 SPECTOOL_API_RETRY="${SPECTOOL_API_RETRY:-1}"
 EVAL_RETRY="${EVAL_RETRY:-$SPECTOOL_API_RETRY}"
 SPECTOOL_MMSEARCH_TOOLS="${SPECTOOL_MMSEARCH_TOOLS:-0}"
-SOURCE_FILE=""
 
 # ── Map BENCH to VLMEvalKit DATA name and optional local build ──────────────
 case "$BENCH" in
@@ -63,12 +62,6 @@ case "$BENCH" in
                 SRC_DIR="${REPO_ROOT}/data/vstar"
             fi
         fi
-        ;;
-    vdr)
-        DATA="${DATA:-VDRBench}"
-        BUILD_SCRIPT="$REPO_ROOT/scripts/build_vdr_tsv.py"
-        SRC_DIR="${VDR_DATA_ROOT:-$RESOURCE_DIR/Osilly__VDR-Bench}"
-        SOURCE_FILE="${VDR_PARQUET:-$SRC_DIR/vision-deepresearch_VDR-Bench-full.parquet}"
         ;;
     mmsearch)
         DATA="${DATA:-MMSearchMini}"
@@ -132,7 +125,7 @@ case "$BENCH" in
         ;;
     *)
         echo "ERROR: Unknown benchmark: $BENCH"
-        echo "Supported: vstar, vdr, mmsearch, mathvision, mathvista, mathvista_mini, mathvision_testmini, mmstar, pope, hrbench4k, hrbench8k"
+        echo "Supported: vstar, mmsearch, mathvision, mathvista, mathvista_mini, mathvision_testmini, mmstar, pope, hrbench4k, hrbench8k"
         exit 1
         ;;
 esac
@@ -186,14 +179,12 @@ if [[ -n "$BUILD_SCRIPT" ]]; then
     needs_build=false
     if [[ ! -f "$TSV" ]]; then
         needs_build=true
-    elif [[ -n "$SOURCE_FILE" && "$SOURCE_FILE" -nt "$TSV" ]]; then
-        needs_build=true
     elif [[ -d "$SRC_DIR" && -f "$SRC_DIR/metadata.json" && "$SRC_DIR/metadata.json" -nt "$TSV" ]]; then
         needs_build=true
     fi
     if [[ "$needs_build" == true ]]; then
         echo "[step] Building $TSV from $SRC_DIR ..."
-        SRC_DIR="$SRC_DIR" SRC_FILE="$SOURCE_FILE" LMUData="$LMUData" IMG_ROOT="${IMG_ROOT:-}" \
+        SRC_DIR="$SRC_DIR" LMUData="$LMUData" IMG_ROOT="${IMG_ROOT:-}" \
             "$VLMEVAL_PY" "$BUILD_SCRIPT"
     else
         echo "[step] Reusing existing $TSV (delete it to rebuild)"
