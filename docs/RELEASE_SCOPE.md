@@ -10,4 +10,6 @@ The default smoke suite covers startup failures and selected current protocol/tr
 
 Excluded: private Git history, model weights, benchmark contents, outputs/trajectories, generated frozen runtimes, caches, backups, credentials, environment files and experiment-specific queues. AgentVista feasibility experiments are not included.
 
+脚本清理（2026-11-12）：删除未接入当前启动流程、测试或文档的旧随机子集工具 `spectool/scripts/make_subset.py` 和独立 F1 评分工具 `spectool/scripts/score_mmsearch_evalkit.py`。快速测试仍使用 `scripts/make_smoke_indices.py` 选择固定样本；保留启动器实际调用的评测入口、数据转换及 NUMA 脚本，以及已有回归测试依赖的 MMSearch judge 工具。`compat/` 中的 vLLM 兼容补丁继续保留。
+
 The vendored VLMEvalKit keeps its Apache-2.0 license and upstream notices. The recorded original upstream pin in its VENDORED.md is historical; this tree includes later local modifications and should not be treated as an untouched checkout at that pin.
