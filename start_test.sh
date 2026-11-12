@@ -109,6 +109,9 @@ INDEX_FILE="${INDEX_FILE:-}"       # --index-file: JSON {dataset: [index,...]} s
 RUN_EVAL=true
 KILL_EXISTING=false
 RUN_MODE="${RUN_MODE:-spectool}"  # spectool | speceyes | baseline | direct | draft-only
+# Alternative evaluation controller (dreamr | specreason; both run with RUN_MODE=spectool's Main + Draft
+# services). Selected only by --dreamr / --specreason; an inherited value is ignored on purpose.
+SPECAGENT_EVAL_DRIVER=""
 PORT_RESERVATION_PID=""
 STARTED_VLLM_MAIN=false
 STARTED_VLLM_DRAFT_SERVICES=()
@@ -137,6 +140,7 @@ usage() {
         "Modes:" \
         "  --spectool              Main 27B + draft 9B speculative eval (default)" \
         "  --dreamr                DREAM-R visual-tool adapter (Main + Draft)" \
+        "  --specreason            SpecReason visual-tool adapter (Main + Draft)" \
         "  --speceyes               27B router + 9B confidence gate + 27B sandbox fallback" \
         "                          (router=10, draft=20, fallback=512 tokens; turns use --max-steps)" \
         "  --baseline" \
@@ -209,6 +213,8 @@ usage() {
         "" \
         "Examples:" \
         "  bash start_test.sh --spectool --bench vstar --main-gpus 0 --draft-gpus 1" \
+        "  bash start_test.sh --specreason --bench vstar --main-gpus 0 --draft-gpus 1" \
+        "  bash start_test.sh --dreamr --bench vstar --main-gpus 0 --draft-gpus 1" \
         "  bash start_test.sh --baseline --main-gpus 0 --api-nproc 4" \
         "  bash start_test.sh --draft-only --draft-gpus 4 --draft-tp 1 --draft-port 8129" \
         "  bash start_test.sh --spectool --main-gpus 0 --draft-tp 1 --draft-replicas 2 --draft-gpus 4,5" \
@@ -227,12 +233,13 @@ die() {
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --spectool) RUN_MODE=spectool; shift ;;
-            --dreamr) RUN_MODE="spectool"; SPECAGENT_EVAL_DRIVER=dreamr; shift ;;
-            --speceyes) RUN_MODE=speceyes; shift ;;
-            --baseline) RUN_MODE=baseline; shift ;;
-            --direct) RUN_MODE=direct; shift ;;
-            --draft-only) RUN_MODE=draft-only; shift ;;
+            --spectool) RUN_MODE=spectool; SPECAGENT_EVAL_DRIVER=""; shift ;;
+            --dreamr) RUN_MODE=spectool; SPECAGENT_EVAL_DRIVER=dreamr; shift ;;
+            --specreason) RUN_MODE=spectool; SPECAGENT_EVAL_DRIVER=specreason; shift ;;
+            --speceyes) RUN_MODE=speceyes; SPECAGENT_EVAL_DRIVER=""; shift ;;
+            --baseline) RUN_MODE=baseline; SPECAGENT_EVAL_DRIVER=""; shift ;;
+            --direct) RUN_MODE=direct; SPECAGENT_EVAL_DRIVER=""; shift ;;
+            --draft-only) RUN_MODE=draft-only; SPECAGENT_EVAL_DRIVER=""; shift ;;
             --bench) BENCH="$2"; shift 2 ;;
             --mode) MODE="$2"; shift 2 ;;
             --api-nproc) API_NPROC="$2"; shift 2 ;;
@@ -1328,9 +1335,35 @@ print_summary() {
         "Eval log    : $(log_file eval)"
 }
 
+# --dreamr / --specreason run on a checksum-recorded copy of the shared runtime that lives
+# in baselines/<name>/runtime. Build it on first use, before any service is started. Several
+# launches may start at once (one per GPU group), so the copy is made under a lock.
+prepare_adapter_runtime() {
+    local driver="$SPECAGENT_EVAL_DRIVER" adapter lock waited=0
+    [[ "$driver" == dreamr || "$driver" == specreason ]] || return 0
+    adapter="$CODE_ROOT/baselines/$driver"
+    [[ -f "$adapter/runtime/manifest.json" ]] && return 0
+    lock="$adapter/.freeze.lock"
+    until mkdir "$lock" 2>/dev/null; do
+        [[ -f "$adapter/runtime/manifest.json" ]] && return 0
+        (( waited < 300 )) || die "Timed out waiting for another launch to prepare $adapter/runtime; remove $lock if none is running"
+        sleep 2
+        waited=$((waited + 2))
+    done
+    if [[ ! -f "$adapter/runtime/manifest.json" ]]; then
+        log "Preparing the $driver runtime snapshot from $SPECTOOL_ROOT"
+        if ! "$CLIENT_PYTHON" "$adapter/freeze_runtime.py" --source "$SPECTOOL_ROOT"; then
+            rmdir "$lock" 2>/dev/null || true
+            die "Could not prepare $adapter/runtime (see the message above)"
+        fi
+    fi
+    rmdir "$lock" 2>/dev/null || true
+}
+
 main() {
     parse_args "$@"
     resolve_mode
+    prepare_adapter_runtime
     trap cleanup_services_on_exit EXIT
     trap 'exit 130' INT
     trap 'exit 143' TERM

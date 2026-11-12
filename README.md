@@ -80,6 +80,15 @@ bash start_test.sh \
 
 GPU 参数会传给 `start_test.sh`，Main / Draft 的 TP 默认均为 1；多卡部署需同时指定 `--main-tp` / `--draft-tp`。默认启动会自动选择空闲端口，遇到已有 vLLM 也会跳过；仅 `--reuse-services` 显式复用服务。
 
+完整启动脚本 `start_test.sh` 用同名选项选择方法：`--spectool`、`--speceyes`、`--dreamr`、`--specreason`、`--baseline`、`--direct`、`--draft-only`（后给出的选项覆盖前面的）。一次调用是一种方法在一个 benchmark 上的一整轮测试，例如：
+
+```bash
+bash start_test.sh --specreason --bench mmstar --main-gpus 0 --draft-gpus 1 --api-nproc 4
+bash start_test.sh --dreamr     --bench mmstar --main-gpus 2 --draft-gpus 3 --api-nproc 4
+```
+
+`--specreason` 和 `--dreamr` 首次使用时会自动生成各自的 `baselines/<name>/runtime/` 冻结快照（多个启动同时进行时只生成一次），无需手动准备，也不再读取 `SPECAGENT_EVAL_DRIVER` 环境变量。
+
 默认数据集为 VStar，可用 `--bench` 切换。常用选项：
 
 - `--dry-run`：只查看执行计划，不安装、下载或启动服务。

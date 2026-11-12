@@ -12,7 +12,13 @@ bash scripts/run_test.sh --method dreamr --bench vstar --samples 2 --main-gpus 0
 bash scripts/run_test.sh --method dreamr --bench mmstar --samples 2 --main-gpus 0 --draft-gpus 1 --dry-run
 ```
 
-入口自动准备本地 `runtime/`、启动 Main / Draft / sandbox、运行冻结的 EvalKit，并在退出时清理本次服务。无需初始化上游子模块，也无需安装上游 RL 训练依赖。完整 benchmark 使用 `--full`，复用已部署服务使用 `--reuse-services`。
+入口自动准备本地 `runtime/`（首次使用时由 `start_test.sh` 生成）、启动 Main / Draft / sandbox、运行冻结的 EvalKit，并在退出时清理本次服务。完整入口可直接用 `--dreamr` 启动：
+
+```bash
+bash start_test.sh --dreamr --bench vstar --main-gpus 0 --draft-gpus 1
+```
+
+无需初始化上游子模块，也无需安装上游 RL 训练依赖。完整 benchmark 使用 `--full`，复用已部署服务使用 `--reuse-services`。
 
 `.env` 中可配置：
 
@@ -41,7 +47,7 @@ DREAMR_FIRST_MAIN_TURNS=0
 bash scripts/run_test.sh
 ```
 
-单独离线检查配置可在冻结后运行（不发送模型请求）：
+单独离线检查配置可在冻结后运行（不发送模型请求；`start_test.sh --dreamr` 会在需要时自动冻结，这里手动冻结只用于不经过启动脚本的检查）：
 
 ```bash
 python baselines/dreamr/freeze_runtime.py --source spectool
