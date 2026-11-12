@@ -10,6 +10,12 @@ For the automatic setup and small-sample launcher, see [the quickstart](../../do
 bash scripts/run_test.sh --method specreason --bench vstar --samples 2 --main-gpus 0 --draft-gpus 1
 ```
 
+The complete launcher selects this method with `--specreason` (one call = one method on one benchmark):
+
+```bash
+bash start_test.sh --specreason --bench vstar --main-gpus 0 --draft-gpus 1
+```
+
 ## Dependencies
 
 The adapter requires Python 3.10+, OpenAI SDK, Pillow and a compatible common agent/VLMEvalKit runtime. The common runtime is now included at `spectool/` in the repository root. The prompt, parser, image processing, tool sessions and timing helpers are imported from that included runtime.
@@ -18,7 +24,7 @@ For the original upstream task and installation, initialize `upstream/` and foll
 
 ## Preparing the included runtime
 
-For manual execution, freeze the included runtime first:
+`start_test.sh --specreason` prepares this runtime automatically on first use (under a lock, so parallel launches build it once). For manual execution outside the launcher, freeze the included runtime first:
 
 ```bash
 cd baselines/specreason

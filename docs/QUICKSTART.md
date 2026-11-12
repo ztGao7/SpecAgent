@@ -175,9 +175,9 @@ bash scripts/run_test.sh --method direct --bench vstar --samples 2 --main-gpus 0
 
 默认固定选择 TSV 中前两个不同 index，不按正确答案挑选。输出目录每次唯一，位于 `.env` 配置的 `$SPECAGENT_RESULTS_ROOT/<RUN_ID>/`，包含选择的 index、服务日志、预测表及轨迹。未配置结果根目录时使用 `$SPECAGENT_WORK_ROOT/runs/`。`infer` 模式只运行推理，不依赖外部评分 API；生成预测文件不自动等同于预测正确。
 
-SpecEyes 的单批路由大小可能大于 smoke 样本数，快速测试仅用于验证管线。SpecReason 会先把本仓库公共代码冻结到自己的、被 Git 忽略的 `runtime/`，随后使用独立控制器运行；它没有使用 Spectool 的 QJ / early-exit 决策。
+SpecEyes 的单批路由大小可能大于 smoke 样本数，快速测试仅用于验证管线。SpecReason 会先把本仓库公共代码冻结到自己的、被 Git 忽略的 `runtime/`（首次使用时由 `start_test.sh` 自动完成），随后使用独立控制器运行；它没有使用 Spectool 的 QJ / early-exit 决策。直接用完整入口启动：`bash start_test.sh --specreason --bench vstar --main-gpus 0 --draft-gpus 1`。
 
-DreamR 使用独立适配控制器，按正标签概率阈值验证 Draft，并行生成 Main 改写；工具结果使跨轮执行保持串行，默认使用现有模型而非 SAPO 训练模型。可在 `.env` 设置 `DREAMR_ACCEPT_THRESHOLD=0.7`、`DREAMR_FIRST_MAIN_TURNS=0`。冻结运行时会自动生成，无需手动复制源码。实现范围与用量记录见 [DreamR 说明](../baselines/dreamr/README.md)。
+DreamR 使用独立适配控制器，按正标签概率阈值验证 Draft，并行生成 Main 改写；工具结果使跨轮执行保持串行，默认使用现有模型而非 SAPO 训练模型。可在 `.env` 设置 `DREAMR_ACCEPT_THRESHOLD=0.7`、`DREAMR_FIRST_MAIN_TURNS=0`。冻结运行时会自动生成，无需手动复制源码；完整入口的写法是 `bash start_test.sh --dreamr --bench vstar --main-gpus 0 --draft-gpus 1`。实现范围与用量记录见 [DreamR 说明](../baselines/dreamr/README.md)。
 
 已有符合配置的服务时：
 

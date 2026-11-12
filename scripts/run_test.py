@@ -71,16 +71,15 @@ def main():
     run = args.output_dir.expanduser().resolve() if args.output_dir else results / run_id
     indices = run / "indices.json"
     output = run / "predictions"
-    selected_method = "spectool" if args.method == "specreason" else args.method
     env.update(RUN_ID=run_id, RUN_DIR=str(run),
                IMAGE_TRANSPORT="data", SPECTOOL_IMAGE_TRANSPORT="data", LMUData=str(data), RESOURCE_DIR=str(resource))
     # --full must not inherit a subset from an earlier shell / .env configuration.
     env["INDEX_FILE"] = "" if args.full else str(indices)
     # Data URLs work with both freshly started and externally supplied services;
     # they do not depend on those services' allowed-local-media-path setting.
-    env["SPECAGENT_EVAL_DRIVER"] = args.method if args.method in {"specreason", "dreamr"} else "vlmeval"
+    eval_driver = args.method if args.method in {"specreason", "dreamr"} else "vlmeval"
     api_nproc = args.api_nproc or int(env.get("API_NPROC", "4"))
-    command = ["bash", str(ROOT / "start_test.sh"), f"--{selected_method}",
+    command = ["bash", str(ROOT / "start_test.sh"), f"--{args.method}",
                "--bench", args.bench, "--mode", "infer", "--api-nproc", str(api_nproc),
                "--output-dir", str(run)]
     # Forward runtime allocation explicitly to the actual service launcher.
@@ -94,7 +93,7 @@ def main():
     if args.reuse_services:
         command += ["--reuse-services"]
     print(json.dumps({"method": args.method, "dataset": dataset,
-                      "eval_driver": env["SPECAGENT_EVAL_DRIVER"],
+                      "eval_driver": eval_driver,
                       "samples": "all" if args.full else args.samples,
                       "output": str(run), "predictions": str(output), "main_gpus": env["MAIN_GPUS"],
                       "main_tp": env["MAIN_TP"], "draft_gpus": env["DRAFT_GPUS"],
@@ -137,10 +136,6 @@ def main():
     if not args.full:
         subprocess.run([python, str(ROOT / "scripts/make_smoke_indices.py"), "--dataset", dataset,
                         "--table", str(table), "--count", str(args.samples), "--output", str(indices)], check=True)
-    if args.method in {"specreason", "dreamr"}:
-        adapter = ROOT / "baselines" / args.method
-        if not (adapter / "runtime/manifest.json").exists():
-            subprocess.run([python, str(adapter / "freeze_runtime.py"), "--source", str(ROOT / "spectool")], check=True)
     subprocess.run(command, env=env, check=True)
 
 

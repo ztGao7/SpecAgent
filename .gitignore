@@ -15,8 +15,10 @@ __pycache__/
 *.db*
 baselines/specreason/runtime/
 baselines/specreason/runtime.preparing/
+baselines/specreason/.freeze.lock/
 baselines/dreamr/runtime/
 baselines/dreamr/runtime.preparing/
+baselines/dreamr/.freeze.lock/
 resources/
 models/
 datasets/
