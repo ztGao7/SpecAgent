@@ -126,6 +126,7 @@ def test_root_launcher_skips_an_existing_model_api_and_propagates_ports(tmp_path
 source "$1/start_test.sh"
 setup_paths() { mkdir -p "$RUN_DIR/logs" "$RUN_DIR/pids"; }
 start_services() { :; }
+bench_token_snapshot() { :; }
 run_eval() {
     printf 'resolved=%s,%s,%s,%s\n' "$MAIN_PORT" "$DRAFT_PORT" "$SANDBOX_PORT" "$SANDBOX_REDIS_PORT"
     printf 'broker=%s\n' "$PORT_RESERVATION_PID"
@@ -161,6 +162,7 @@ def test_parallel_launchers_hold_disjoint_ports_until_exit(tmp_path):
 source "$1/start_test.sh"
 setup_paths() { mkdir -p "$RUN_DIR/logs" "$RUN_DIR/pids"; }
 start_services() { :; }
+bench_token_snapshot() { :; }
 run_eval() {
     printf '%s %s %s %s\n' "$MAIN_PORT" "$DRAFT_PORT" "$SANDBOX_PORT" "$SANDBOX_REDIS_PORT" > "$RUN_DIR/selected"
     for ((attempt=0; attempt<100; attempt++)); do

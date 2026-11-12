@@ -64,8 +64,11 @@ GPU 参数会传给 `start_test.sh`，Main / Draft 的 TP 默认均为 1；多�
 - `--dry-run`：只查看执行计划，不安装、下载或启动服务。
 - `--full`：使用完整数据集。
 - `--reuse-services`：复用已确认配置的现有服务。
+- `--output-dir DIR`：指定本轮总目录，预测、已有轨迹、服务日志和 bench token 汇总都保存在其中。
 
 默认快速测试会启动需要的本地服务，并在结束后清理本次启动的服务。真实模型测试需要匹配的 GPU、足够的显存、兼容驱动、模型权重和数据。当前入口使用仅推理模式，生成预测文件不等于完成准确率评测。
+
+两个启动入口默认输出到 `$SPECAGENT_WORK_ROOT/runs/<RUN_ID>/`。其中 `logs/` 保存 vLLM / sandbox / 评测日志，`predictions/` 保存预测和已有轨迹，`token_usage.json` 保存本轮输入、输出 token 总量及 Main / Draft 分量。按 vLLM 服务端计数器的评测前后差值统计；做方法对比时使用独占服务。目录结构和计数口径见[快速入门](docs/QUICKSTART.md#每轮结果目录与整个-benchmark-的-token-用量)。
 
 ## 目录结构
 
@@ -92,7 +95,7 @@ git submodule update --init --recursive
 
 ## 验证情况与使用范围
 
-默认 CPU 快速测试目前为 **171 项，已在 macOS 和 Linux 新客户端环境通过**，包括 `.env`、GPU 参数传递、真实端口占用、并发端口预留及退出清理回归。2026-11-11 已从 GitHub clone，使用新建的客户端与 vLLM 环境、现有模型及数据，在两张扩容 4090（约 48/45 GiB）上完成 Spectool / VStar 两样本真实推理，两个样本均生成有效预测，本次服务及通信目录自动清理。模型为 Qwen3.8-27B-FP8 + Qwen3.5-9B。DreamR 也已从 GitHub 全新 clone 后完成 VStar 两样本推理，核对了阈值验证、并行改写和取消记录。2026-11-12 的 GPU 参数与端口修改通过 CPU / 真实 socket 检查，因 GPU 均被现有实验占用，本轮未重跑模型推理。详细范围见[验证说明](docs/VALIDATION.md)。
+默认 CPU 快速测试目前为 **187 项，已在 macOS 和 Linux 新客户端环境通过**，包括 `.env`、GPU 参数传递、真实端口占用、并发端口预留、整轮输出目录和 bench token 汇总回归。token 汇总已用实际 HTTP 指标服务验证正常及失败路径，并只读核对现有 vLLM 0.25.1 的指标格式。2026-11-11 已从 GitHub clone，使用新建的客户端与 vLLM 环境、现有模型及数据，在两张扩容 4090（约 48/45 GiB）上完成 Spectool / VStar 两样本真实推理，两个样本均生成有效预测，本次服务及通信目录自动清理。模型为 Qwen3.8-27B-FP8 + Qwen3.5-9B。DreamR 也已从 GitHub 全新 clone 后完成 VStar 两样本推理，核对了阈值验证、并行改写和取消记录。2026-11-12 的修改通过 CPU / socket / HTTP 检查，因 GPU 均被现有实验占用，本轮未重跑模型推理或全量 bench。详细范围见[验证说明](docs/VALIDATION.md)。
 
 原始研究测试保留在 `spectool/tests` 中，其中部分仍针对已移除的接口，完整套件存在已知失败，可通过 `bash scripts/test.sh --full` 查看。目标机器仍需执行小样本验证；以上检查不代表全 benchmark 准确率、加速比或 A800 性能已经验证。
 

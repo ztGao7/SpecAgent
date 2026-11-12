@@ -1,5 +1,13 @@
 # Setup validation — 2026-11-12
 
+## 整轮输出目录与 bench token 汇总
+
+- 两个启动入口统一使用 `$SPECAGENT_WORK_ROOT/runs/<RUN_ID>/`，支持 `--output-dir`。预测及已有轨迹位于 `predictions/`，服务和评测日志位于 `logs/`，本轮计数位于 `token_usage.json`，原始指标快照位于 `metrics/`。已有结果目录和已初始化的运行目录会被拒绝复用；拒绝时不会停止其中已有的评测进程。
+- 评测前后读取各模型服务的 vLLM 累计 token 计数，合并 Main / Draft 与所有 Draft 副本；收尾统计在停止本轮模型服务前执行。缺失计数、计数器重置/服务重启、仍有在途请求和共享服务均有明确状态，不把缺失数据写成零。正常推理失败时也保留计数及非零退出状态。
+- macOS / Linux 独立客户端均通过 **187 项** CPU 检查。HTTP 集成测试运行真实启动入口及计数脚本，以模拟模型服务替代 GPU 边界：初始计数为输入 100 / 输出 10，评测后为 850 / 65，正确保存本轮输入 **750** / 输出 **55**；正常结束和评测返回 7 均已验证。另覆盖多服务汇总、异常指标、旧结果保护、整轮路径、全量 bench 清除继承的子集配置。
+- Linux 检查在独立 GitHub checkout 中进行。只读访问现有 vLLM 服务，确认 `/version` 为 `0.25.1`，并用新解析器成功读取实际 `/metrics` 中的 token 计数（含科学计数法）及运行/等待请求指标。未向该服务发送推理请求，也未停止任何原实验。没有完成本轮全量 GPU benchmark 或 token 总量的 GPU 实测验收。
+- 本轮没有增加逐请求 token 插桩，也未重写 Spectool / SpecEyes 的轨迹格式；标准 Agent 的已有 JSON 轨迹写入本轮预测目录。之前未保存初始计数的历史日志不能据此还原为完整 bench token 总量。
+
 ## GPU 参数与自动端口分配
 
 - 根目录和兼容目录中的 `.env` 模板不再指定 GPU 编号、TP 或端口；文档改为在 `start_test.sh` / `scripts/run_test.sh` 的命令参数中分配 GPU。Main / Draft 的 TP 默认均为 1，多卡部署必须显式提供匹配的 TP。启动所需 GPU 未指定、GPU 重复分配或 TP 不匹配时，部署前报错。

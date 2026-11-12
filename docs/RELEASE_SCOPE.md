@@ -6,6 +6,8 @@ The original research behavior is retained. Deployment changes remove fixed mach
 
 SpecReason runs its own sequential controller on a checksum-recorded copy of the shared runtime. Its launcher uses the active environment, model IDs are explicit, and its data/media directories are configurable. The shared service launcher now supports dispatch to that controller without importing Spectool's speculative decision policy into the baseline.
 
+Each evaluation now keeps its predictions, existing trajectories, service logs and benchmark token report in one run directory. Token accounting uses before/after vLLM server counters, with explicit missing/reset/shared-service status, and does not change the agents' generation policies or add per-request token instrumentation.
+
 The default smoke suite covers startup failures and selected current protocol/transport/baseline tests. Historical tests for retained features remain available and have known retired-interface failures. Tests belonging exclusively to explicitly removed scripts are removed with those scripts; this does not make the remaining full suite green.
 
 Excluded: private Git history, model weights, benchmark contents, outputs/trajectories, generated frozen runtimes, caches, backups, credentials, environment files and experiment-specific queues. AgentVista feasibility experiments are not included.

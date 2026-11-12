@@ -13,9 +13,11 @@ VLLM_SERVER_PYTHONPATH="${VLLM_SERVER_PYTHONPATH:-$CODE_ROOT/compat/vllm_no_pyar
 SPECTOOL_ROOT="${SPECTOOL_ROOT:-$CODE_ROOT/spectool}"
 NUMA_EXEC="${NUMA_EXEC:-$SPECTOOL_ROOT/scripts/numa_exec.py}"
 SANDBOX_ROOT="${SANDBOX_ROOT:-$CODE_ROOT/sandbox_repo}"
-LOG_DIR="${LOG_DIR:-$CODE_ROOT/runtime_logs}"
 RUN_ID="${RUN_ID:-native_$(date +%Y%m%d_%H%M%S)_$$}"
-RUN_DIR="${RUN_DIR:-$CODE_ROOT/.runs/$RUN_ID}"
+RUN_DIR="${RUN_DIR:-}"
+OUTPUT_DIR_CLI=""
+TOKEN_ACCOUNTING_STARTED=false
+RUN_PATHS_READY=false
 
 BENCH="${BENCH:-vstar}"
 MODE="${MODE:-infer}"
@@ -147,7 +149,8 @@ usage() {
         "  --mode MODE             infer or all (default: infer)" \
         "  --api-nproc N           Eval workers; for --speceyes, parallel tool-agent items per batch (default: 1)" \
         "  --speceye-batch-size N  Questions per official SpecEyes funnel (default: 6)" \
-        "  --work-dir DIR          Output directory" \
+        "  --output-dir DIR        One directory for all files from this run" \
+        "  --work-dir DIR          Alias for --output-dir (predictions go in DIR/predictions)" \
         "  --max-steps N           Unified Agent step limit for every mode and benchmark (default: 15)" \
         "  --max-image-history N   Spectool image history cap (default: 5)" \
         "  --image-max-size N      Input image max edge (0 disables, default: 0)" \
@@ -234,7 +237,7 @@ parse_args() {
             --mode) MODE="$2"; shift 2 ;;
             --api-nproc) API_NPROC="$2"; shift 2 ;;
             --speceye-batch-size) SPECEYE_BATCH_SIZE="$2"; shift 2 ;;
-            --work-dir) WORK_DIR="$2"; shift 2 ;;
+            --output-dir|--work-dir) OUTPUT_DIR_CLI="$2"; shift 2 ;;
             --max-steps) MAX_STEPS="$2"; shift 2 ;;
             --max-image-history) MAX_IMAGE_HISTORY="$2"; shift 2 ;;
             --image-max-size) IMAGE_MAX_SIZE="$2"; shift 2 ;;
@@ -287,7 +290,6 @@ parse_args() {
             --kill-existing) KILL_EXISTING=true; shift ;;
             --run-id)
                 RUN_ID="$2"
-                RUN_DIR="$CODE_ROOT/.runs/$RUN_ID"
                 shift 2
                 ;;
             -h|--help) usage; exit 0 ;;
@@ -407,6 +409,24 @@ setup_paths() {
     if [[ "$RUN_MODE" == "spectool" ]]; then
         [[ -d "$DRAFT_MODEL_PATH" ]] || die "Missing draft model: $DRAFT_MODEL_PATH"
     fi
+    if [[ -n "$INDEX_FILE" ]]; then
+        [[ -f "$INDEX_FILE" ]] || die "Missing index file: $INDEX_FILE"
+        INDEX_FILE="$(readlink -f "$INDEX_FILE")"
+    fi
+    [[ ! -f "$RUN_DIR/run_info.json" ]] || die "Run directory already contains a previous run; choose a new --output-dir: $RUN_DIR"
+    mkdir -p "$RUN_DIR/logs" "$RUN_DIR/pids"
+    mkdir "$RUN_DIR/.run-owner" 2>/dev/null \
+        || die "Run directory is already in use or initialized; choose a new --output-dir: $RUN_DIR"
+    RUN_PATHS_READY=true
+    RUN_DIR="$(cd "$RUN_DIR" && pwd -P)"
+    WORK_DIR="$RUN_DIR/predictions"
+    LOG_DIR="$RUN_DIR/logs"
+    if [[ -n "$INDEX_FILE" ]]; then
+        if [[ "$INDEX_FILE" != "$RUN_DIR/indices.json" && ! "$INDEX_FILE" -ef "$RUN_DIR/indices.json" ]]; then
+            cp -- "$INDEX_FILE" "$RUN_DIR/indices.json"
+        fi
+        INDEX_FILE="$RUN_DIR/indices.json"
+    fi
     case "$IMAGE_TRANSPORT" in
         file)
             if [[ -z "$LOCAL_MEDIA_ROOT" ]]; then
@@ -418,11 +438,6 @@ setup_paths() {
         data) ;;
         *) die "IMAGE_TRANSPORT must be 'file' or 'data': $IMAGE_TRANSPORT" ;;
     esac
-    if [[ -n "$INDEX_FILE" ]]; then
-        [[ -f "$INDEX_FILE" ]] || die "Missing index file: $INDEX_FILE"
-        INDEX_FILE="$(readlink -f "$INDEX_FILE")"
-    fi
-    mkdir -p "$LOG_DIR" "$RUN_DIR/logs" "$RUN_DIR/pids"
 }
 
 media_parent() {
@@ -666,8 +681,13 @@ cleanup_services_on_exit() {
     local status=$? name
     trap - EXIT INT TERM
     set +e
-    stop_pid_file "$(pid_file eval)"
-    if [[ "$START_SERVICES" == true && "$RUN_EVAL" == true ]]; then
+    if [[ "$RUN_PATHS_READY" == true ]]; then stop_pid_file "$(pid_file eval)"; fi
+    if [[ "$TOKEN_ACCOUNTING_STARTED" == true ]]; then
+        bench_token_snapshot after "$status" >>"$RUN_DIR/logs/tokens.log" 2>&1 \
+            || log "Token summary failed; see $RUN_DIR/logs/tokens.log and metrics/"
+        log "Results retained in $RUN_DIR (token_usage.json contains bench totals)"
+    fi
+    if [[ "$RUN_PATHS_READY" == true && "$START_SERVICES" == true && "$RUN_EVAL" == true ]]; then
         log "Stopping services immediately for run $RUN_ID"
         if (( ${#STARTED_VLLM_DRAFT_SERVICES[@]} > 0 )); then
             for name in "${STARTED_VLLM_DRAFT_SERVICES[@]}"; do
@@ -1130,7 +1150,30 @@ resolve_mode() {
             seen_main+=("$gpu")
         done
     fi
-    WORK_DIR="${WORK_DIR:-$SPECTOOL_ROOT/outputs/${RUN_MODE}_${BENCH}_${RUN_ID}}"
+    RUN_DIR="${OUTPUT_DIR_CLI:-${RUN_DIR:-${WORK_DIR:-$SPECAGENT_WORK_ROOT/runs/$RUN_ID}}}"
+    WORK_DIR="$RUN_DIR/predictions"
+    LOG_DIR="$RUN_DIR/logs"
+}
+
+bench_token_snapshot() {
+    local phase="$1" exit_code="${2:-0}" idx role method
+    local -a args=("$phase" --run-dir "$RUN_DIR" --bench "$BENCH" --exit-code "$exit_code")
+    method="$RUN_MODE"
+    if [[ "${SPECAGENT_EVAL_DRIVER:-}" == dreamr || "${SPECAGENT_EVAL_DRIVER:-}" == specreason ]]; then
+        method="$SPECAGENT_EVAL_DRIVER"
+    fi
+    args+=(--method "$method")
+    role=main
+    [[ "$RUN_MODE" != draft-only ]] || role=draft
+    args+=(--service "$role=http://127.0.0.1:${MAIN_PORT}/metrics")
+    if [[ "$START_DRAFT" == true ]]; then
+        for idx in "${!DRAFT_PORT_LIST[@]}"; do
+            args+=(--service "${DRAFT_SERVICE_NAMES[$idx]}=http://127.0.0.1:${DRAFT_PORT_LIST[$idx]}/metrics")
+        done
+    fi
+    [[ "$START_SERVICES" == true ]] || args+=(--shared)
+    [[ -z "$INDEX_FILE" ]] || args+=(--subset)
+    "$CLIENT_PYTHON" "$CODE_ROOT/scripts/bench_tokens.py" "${args[@]}"
 }
 
 start_services() {
@@ -1175,6 +1218,7 @@ run_eval() {
         cd "$SPECTOOL_ROOT"
         export LMUData="${LMUData:-$RESOURCE_DIR/LMUData}"
         export MODEL MODE API_NPROC EVAL_RETRY BENCH WORK_DIR RUN_MODE
+        export SPECTOOL_RAW_TRAJ_DIR="$WORK_DIR/raw_trajectories"
         export_step_budget
         export SPECTOOL_OPENAI_MAX_RETRIES SPECTOOL_API_TIMEOUT SPECTOOL_API_RETRY
         export MAX_IMAGE_HISTORY IMAGE_MAX_SIZE TOOL_IMAGE_MAX_SIZE
@@ -1263,6 +1307,8 @@ print_summary() {
         "Run mode    : $RUN_MODE" \
         "Eval driver : ${SPECAGENT_EVAL_DRIVER:-vlmeval}" \
         "Run dir     : $RUN_DIR" \
+        "Predictions : $WORK_DIR" \
+        "Bench tokens: $RUN_DIR/token_usage.json" \
         "Main URL    : http://127.0.0.1:${MAIN_PORT}/v1" \
         "Main layout : TP=${MAIN_TP} GPUs=${MAIN_GPUS:-<resident>}" \
         "Draft URL(s): $draft_url" \
@@ -1286,7 +1332,9 @@ print_summary() {
 main() {
     parse_args "$@"
     resolve_mode
-    trap cleanup_services_on_exit EXIT INT TERM
+    trap cleanup_services_on_exit EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
     setup_paths
     if [[ "$REUSE_SERVICES" == true ]]; then
         check_reused_services
@@ -1302,6 +1350,9 @@ main() {
         start_services
     fi
     if [[ "$RUN_EVAL" == true ]]; then
+        TOKEN_ACCOUNTING_STARTED=true
+        bench_token_snapshot before >"$RUN_DIR/logs/tokens.log" 2>&1 \
+            || die "Cannot start token accounting; see $RUN_DIR/logs/tokens.log"
         run_eval
     else
         release_port_reservations

@@ -192,6 +192,48 @@ bash scripts/run_test.sh --method spectool --bench vstar --samples 2 --reuse-ser
 bash scripts/run_test.sh --method spectool --bench vstar --full --main-gpus 0 --draft-gpus 1
 ```
 
+### 每轮结果目录与整个 benchmark 的 token 用量
+
+两个入口均默认将本轮文件存入 `$SPECAGENT_WORK_ROOT/runs/<RUN_ID>/`。可指定一个新的、专用于本轮实验的目录：
+
+```bash
+# 整个 VStar benchmark；去掉 --full 则为默认两样本小测。
+bash scripts/run_test.sh --method spectool --bench vstar --full \
+  --main-gpus 0 --draft-gpus 1 \
+  --output-dir /data/your-user/specagent/results/spectool_vstar_001
+
+# 完整启动入口同样支持 --output-dir，默认使用整个 benchmark。
+bash start_test.sh --spectool --bench vstar --main-gpus 0 --draft-gpus 1 \
+  --output-dir /data/your-user/specagent/results/spectool_vstar_002
+```
+
+```text
+本轮目录/
+├── run_info.json             # 方法、bench、完整集/子集、起止时间和退出状态
+├── token_usage.json          # 本轮输入/输出 token 总量及各模型服务的分量
+├── indices.json              # 小测或显式选样时保存；全量运行没有此文件
+├── logs/
+│   ├── vllm_main.log
+│   ├── vllm_draft.log        # 多 Draft 副本为 vllm_draft_1.log 等
+│   ├── sandbox.log
+│   ├── eval.log
+│   └── tokens.log
+├── predictions/             # EvalKit 预测表、耗时文件、已有轨迹和适配器 manifest
+│   └── raw_trajectories/    # DreamR / SpecReason、标准 Agent 的独立 JSON 轨迹
+├── metrics/
+│   ├── before.json
+│   ├── after.json
+│   ├── before/*.prom        # 各模型服务的原始指标快照
+│   └── after/*.prom
+└── pids/                    # 本轮进程记录和最终端口选择
+```
+
+`token_usage.json` 的顶层 `input_tokens` / `output_tokens` 是 Main 和所有 Draft 服务的合计；`services` 保存各服务的分量。统计在服务就绪后、评测开始前取初值，评测结束后等待服务空闲并取末值，再停止本轮服务。使用 vLLM 的 `prompt_tokens_total` / `generation_tokens_total` 差值，无需依赖每个客户端响应是否返回 usage。指标口径见 [vLLM 0.25.1 实现](https://github.com/vllm-project/vllm/blob/v0.25.1/vllm/v1/metrics/loggers.py)，它表示服务端报告的 token 数，不代表 GPU FLOPs；输入量包含重复提交的历史上下文，不是只统计原始题目。
+
+默认独占服务时可用于整个 bench 的汇总。使用 `--reuse-services` / `--no-services` 时仍会保存计数，但 `bench_attribution_complete=false`，因为时段内其他客户端的请求也会计入；原服务的 vLLM 日志保留在其原目录，不会复制成一份新服务日志。指标无法访问、服务重启/计数器重置或边界仍有在途请求时会注明原因，缺失值写为 `null`。推理失败或正常接收中断信号时也会尽量保存已取得的统计，并通过 `benchmark_completed` 和退出码标识未完成；强制 `kill -9` 无法执行收尾。
+
+`--work-dir` 现在是完整启动入口中 `--output-dir` 的别名，指向本轮总目录，预测固定在其 `predictions/` 子目录。已有结果目录会被拒绝复用，避免覆盖或混入上一轮预测。服务退出时保留结果、轨迹和日志。Spectool / SpecEyes 现有轨迹仍在预测表的 `extra_records` 中，本次没有改为逐请求 token 记录。
+
 ## 6. 高级入口与故障处理
 
 `start_test.sh --help` 是完整服务编排入口，支持 GPU/TP、端口、图像、请求/步数预算及门限等设置。快速入口额外固定了 32768 上下文、单样本并发、每个服务最多 2 条在途序列和 data URL 图片传输，便于新机器检查；这些是快速检查配置，不应与历史全量实验混用后直接比较耗时。
@@ -204,7 +246,7 @@ bash scripts/run_test.sh --method spectool --bench vstar --full --main-gpus 0 --
 bash start_test.sh --spectool --bench vstar --main-gpus 0 --draft-gpus 1
 ```
 
-保留服务、暂不评测时可追加 `--services-only`。该高级模式会保留服务进程和 `.runs/<run-id>/pids` 记录，需自行管理。日常小测优先使用会自动清理自身服务的 `scripts/run_test.sh`。
+保留服务、暂不评测时可追加 `--services-only`。该高级模式会保留服务进程和本轮目录的 `pids/` 记录，需自行管理。日常小测优先使用会自动清理自身服务的 `scripts/run_test.sh`。
 
 | 问题 | 检查 |
 | --- | --- |

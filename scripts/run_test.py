@@ -29,6 +29,7 @@ def main():
     parser.add_argument("--draft-port", type=int)
     parser.add_argument("--sandbox-port", type=int)
     parser.add_argument("--redis-port", type=int)
+    parser.add_argument("--output-dir", type=Path, help="One directory for this run's predictions, logs and token totals")
     args = parser.parse_args()
     if args.samples < 1 or (args.main_tp is not None and args.main_tp < 1) or (args.draft_tp is not None and args.draft_tp < 1):
         parser.error("sample count and tensor parallel sizes must be positive")
@@ -62,18 +63,20 @@ def main():
     dataset = DATASETS[args.bench][0]
     table = data / f"{dataset}.tsv"
     run_id = f"quick_{args.method}_{args.bench}_{time.strftime('%Y%m%d_%H%M%S')}_{time.time_ns()}"
-    run = work / "runs" / run_id
+    run = args.output_dir.expanduser().resolve() if args.output_dir else work / "runs" / run_id
     indices = run / "indices.json"
     output = run / "predictions"
     selected_method = "spectool" if args.method == "specreason" else args.method
-    env.update(RUN_ID=run_id, RUN_DIR=str(run), LOG_DIR=str(work / "logs"),
+    env.update(RUN_ID=run_id, RUN_DIR=str(run),
                IMAGE_TRANSPORT="data", SPECTOOL_IMAGE_TRANSPORT="data", LMUData=str(data), RESOURCE_DIR=str(resource))
+    # --full must not inherit a subset from an earlier shell / .env configuration.
+    env["INDEX_FILE"] = "" if args.full else str(indices)
     # Data URLs work with both freshly started and externally supplied services;
     # they do not depend on those services' allowed-local-media-path setting.
     env["SPECAGENT_EVAL_DRIVER"] = args.method if args.method in {"specreason", "dreamr"} else "vlmeval"
     command = ["bash", str(ROOT / "start_test.sh"), f"--{selected_method}",
                "--bench", args.bench, "--mode", "infer", "--api-nproc", "1",
-               "--work-dir", str(output)]
+               "--output-dir", str(run)]
     # Forward runtime allocation explicitly to the actual service launcher.
     for name in ("main_gpus", "main_tp", "draft_gpus", "draft_tp",
                  "main_port", "draft_port", "sandbox_port", "redis_port"):
@@ -87,7 +90,7 @@ def main():
     print(json.dumps({"method": args.method, "dataset": dataset,
                       "eval_driver": env["SPECAGENT_EVAL_DRIVER"],
                       "samples": "all" if args.full else args.samples,
-                      "output": str(output), "main_gpus": env["MAIN_GPUS"],
+                      "output": str(run), "predictions": str(output), "main_gpus": env["MAIN_GPUS"],
                       "main_tp": env["MAIN_TP"], "draft_gpus": env["DRAFT_GPUS"],
                       "draft_tp": env["DRAFT_TP"], "reusing_services": args.reuse_services}, indent=2), flush=True)
     print(json.dumps({"client_python": python, "server_python": server,
@@ -96,6 +99,8 @@ def main():
     print(shlex.join(command), flush=True)
     if args.dry_run:
         return
+    if (run / "run_info.json").exists() or (run / ".run-owner").exists():
+        raise SystemExit(f"Run directory already contains results; choose a new --output-dir: {run}")
     if not args.reuse_services:
         if args.method != "draft-only" and not env["MAIN_GPUS"]:
             parser.error("Specify --main-gpus LIST when starting Main")
