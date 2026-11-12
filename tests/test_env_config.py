@@ -38,6 +38,7 @@ def test_dotenv_drives_install_and_quick_plan_from_another_directory(checkout, t
     server = work / 'servers/custom/bin/python'
     (checkout / '.env').write_text(
         f'SPECAGENT_WORK_ROOT="{work}"\nCLIENT_PYTHON="{client}"\nSERVER_PYTHON="{server}"\n'
+        f'SPECAGENT_RESULTS_ROOT="{work}/all runs"\n'
         f'LMUData="{work}/existing TSVs"\nMAIN_MODEL_PATH="{work}/weights main"\n'
         'MAIN_GPUS=4\nMAIN_TP=1\nDRAFT_GPUS=5\nDRAFT_TP=1\n'
         'PYTORCH_INDEX_URL=https://torch-mirror.example/cu129\n')
@@ -55,6 +56,8 @@ def test_dotenv_drives_install_and_quick_plan_from_another_directory(checkout, t
     assert json.dumps(str(work / 'existing TSVs/VStarBench.tsv')) in result.stdout
     assert json.dumps(str(work / 'weights main')) in result.stdout
     assert json.dumps(str(client)) in result.stdout
+    plan, _ = json.JSONDecoder().raw_decode(result.stdout)
+    assert Path(plan['output']).parent == work / 'all runs'
     assert not work.exists()
 
 

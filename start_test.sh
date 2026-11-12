@@ -1149,7 +1149,7 @@ resolve_mode() {
             seen_main+=("$gpu")
         done
     fi
-    RUN_DIR="${OUTPUT_DIR_CLI:-${RUN_DIR:-${WORK_DIR:-$SPECAGENT_WORK_ROOT/runs/$RUN_ID}}}"
+    RUN_DIR="${OUTPUT_DIR_CLI:-${RUN_DIR:-${WORK_DIR:-$SPECAGENT_RESULTS_ROOT/$RUN_ID}}}"
     WORK_DIR="$RUN_DIR/predictions"
     LOG_DIR="$RUN_DIR/logs"
 }

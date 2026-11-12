@@ -147,12 +147,16 @@ parse_args --direct --main-gpus 4 --run-id example
 resolve_mode
 printf '%s\n' "$RUN_DIR" "$WORK_DIR" "$LOG_DIR"
 '''
-    result = subprocess.run(['bash', '-c', code, '_', str(ROOT)], env=isolated_env(tmp_path),
-                            capture_output=True, text=True)
-    assert result.returncode == 0, result.stderr
-    run = tmp_path / 'data/runs/example'
-    assert result.stdout.splitlines() == [str(run), str(run / 'predictions'), str(run / 'logs')]
-    assert not run.exists()
+    for custom_results in [None, tmp_path / 'configured results']:
+        env = isolated_env(tmp_path)
+        if custom_results is not None:
+            env['SPECAGENT_RESULTS_ROOT'] = str(custom_results)
+        result = subprocess.run(['bash', '-c', code, '_', str(ROOT)], env=env,
+                                capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+        run = (custom_results or tmp_path / 'data/runs') / 'example'
+        assert result.stdout.splitlines() == [str(run), str(run / 'predictions'), str(run / 'logs')]
+        assert not run.exists()
 
 
 def test_quick_output_dir_plan_has_no_side_effects(tmp_path):

@@ -45,6 +45,27 @@ bash scripts/run_test.sh --method spectool --bench vstar --samples 2 --main-gpus
 
 环境安装会分别创建 `spectool` 客户端环境和 `vllm0251` 模型服务环境。模型、数据、缓存及环境默认保存在配置的数据盘目录中；详细版本和配置方法见[快速入门](docs/QUICKSTART.md)。
 
+## A800 80GB：两卡运行完整 benchmark
+
+完成环境安装并在 `.env` 配好模型和数据路径后，先设置结果根目录（替换为自己的可写数据盘路径）：
+
+```bash
+# 写入仓库根目录 .env；每轮结果自动保存在此目录的 <RUN_ID>/ 子目录。
+SPECAGENT_RESULTS_ROOT=/data/your-user/specagent/results
+```
+
+然后在仓库根目录执行。下面使用两张空闲的 A800 80GB：GPU 0 部署 Main（默认 Qwen3.5-27B），GPU 1 部署 Draft（默认 Qwen3.5-9B），每个模型单卡 TP=1。
+
+```bash
+bash start_test.sh \
+  --spectool --bench vstar --mode infer \
+  --main-gpus 0 --main-tp 1 \
+  --draft-gpus 1 --draft-tp 1 \
+  --api-nproc 4
+```
+
+将 `0`、`1` 替换为分配给本轮实验的 GPU 编号。此命令运行完整 VStar 的推理，不需要传 `--full`；`--api-nproc 4` 表示同时评测 4 个样本。未覆盖配置时使用 80000 上下文、32768 批处理预算和每个服务最多 8 条在途序列。端口自动避让占用，结束后清理本轮服务，保留本轮目录中的预测、已有轨迹、vLLM 日志及 `token_usage.json`。该 A800 配置示例尚未在目标服务器实测。
+
 ## 支持的方法
 
 | 方法 | 快速测试命令 |
@@ -68,7 +89,7 @@ GPU 参数会传给 `start_test.sh`，Main / Draft 的 TP 默认均为 1；多�
 
 默认快速测试会启动需要的本地服务，并在结束后清理本次启动的服务。真实模型测试需要匹配的 GPU、足够的显存、兼容驱动、模型权重和数据。当前入口使用仅推理模式，生成预测文件不等于完成准确率评测。
 
-两个启动入口默认输出到 `$SPECAGENT_WORK_ROOT/runs/<RUN_ID>/`。其中 `logs/` 保存 vLLM / sandbox / 评测日志，`predictions/` 保存预测和已有轨迹，`token_usage.json` 保存本轮输入、输出 token 总量及 Main / Draft 分量。按 vLLM 服务端计数器的评测前后差值统计；做方法对比时使用独占服务。目录结构和计数口径见[快速入门](docs/QUICKSTART.md#每轮结果目录与整个-benchmark-的-token-用量)。
+两个启动入口读取 `.env` 的 `SPECAGENT_RESULTS_ROOT`，输出到其 `<RUN_ID>/` 子目录；未设置时使用 `$SPECAGENT_WORK_ROOT/runs/` 作为结果根目录。其中 `logs/` 保存 vLLM / sandbox / 评测日志，`predictions/` 保存预测和已有轨迹，`token_usage.json` 保存本轮输入、输出 token 总量及 Main / Draft 分量。按 vLLM 服务端计数器的评测前后差值统计；做方法对比时使用独占服务。目录结构和计数口径见[快速入门](docs/QUICKSTART.md#每轮结果目录与整个-benchmark-的-token-用量)。
 
 ## 目录结构
 

@@ -18,6 +18,8 @@ cp .env.example .env
 
 ```bash
 SPECAGENT_WORK_ROOT=/data/你的用户名/specagent
+# 结果根目录：每次启动自动在这里新建本轮的 <RUN_ID>/ 子目录。
+SPECAGENT_RESULTS_ROOT=/data/你的用户名/specagent/results
 ```
 
 `.env` 保存环境、资源路径和模型运行配置，GPU 编号及 TP 在每次启动时用参数指定。两张 80GB 卡可使用 `--main-gpus 0 --draft-gpus 1`，TP 默认均为 1。使用 24GB 卡时，可改为 `--main-gpus 0,1,2,3 --main-tp 4 --draft-gpus 4 --draft-tp 1`（共五张）；TP 必须与对应 GPU 数量一致，Main/Draft 不要共用 GPU。27B 权重约 52 GiB、9B 约 19 GiB，还需要 KV cache、视觉编码器和运行缓冲显存。先用 `nvidia-smi` 确认实际配置和空闲显存。
@@ -171,7 +173,7 @@ bash scripts/run_test.sh --method direct --bench vstar --samples 2 --main-gpus 0
 
 可用 `--main-port` / `--draft-port` / `--sandbox-port` / `--redis-port` 修改搜索起点；`--reuse-services` 和 `--no-services` 则使用给定的准确端口，不搜索替代端口。
 
-默认固定选择 TSV 中前两个不同 index，不按正确答案挑选。输出目录每次唯一，位于 `$SPECAGENT_WORK_ROOT/runs/`，包含选择的 index、服务日志、预测表及轨迹。`infer` 模式只运行推理，不依赖外部评分 API；生成预测文件不自动等同于预测正确。
+默认固定选择 TSV 中前两个不同 index，不按正确答案挑选。输出目录每次唯一，位于 `.env` 配置的 `$SPECAGENT_RESULTS_ROOT/<RUN_ID>/`，包含选择的 index、服务日志、预测表及轨迹。未配置结果根目录时使用 `$SPECAGENT_WORK_ROOT/runs/`。`infer` 模式只运行推理，不依赖外部评分 API；生成预测文件不自动等同于预测正确。
 
 SpecEyes 的单批路由大小可能大于 smoke 样本数，快速测试仅用于验证管线。SpecReason 会先把本仓库公共代码冻结到自己的、被 Git 忽略的 `runtime/`，随后使用独立控制器运行；它没有使用 Spectool 的 QJ / early-exit 决策。
 
@@ -194,17 +196,21 @@ bash scripts/run_test.sh --method spectool --bench vstar --full --main-gpus 0 --
 
 ### 每轮结果目录与整个 benchmark 的 token 用量
 
-两个入口均默认将本轮文件存入 `$SPECAGENT_WORK_ROOT/runs/<RUN_ID>/`。可指定一个新的、专用于本轮实验的目录：
+两个入口均读取 `.env` 的 `SPECAGENT_RESULTS_ROOT`，每次自动创建一个新的本轮目录。先在 `.env` 设置结果根目录：
+
+```bash
+SPECAGENT_RESULTS_ROOT=/data/your-user/specagent/results
+```
+
+然后直接运行，命令里无需再指定结果路径：
 
 ```bash
 # 整个 VStar benchmark；去掉 --full 则为默认两样本小测。
 bash scripts/run_test.sh --method spectool --bench vstar --full \
-  --main-gpus 0 --draft-gpus 1 \
-  --output-dir /data/your-user/specagent/results/spectool_vstar_001
+  --main-gpus 0 --draft-gpus 1
 
-# 完整启动入口同样支持 --output-dir，默认使用整个 benchmark。
-bash start_test.sh --spectool --bench vstar --main-gpus 0 --draft-gpus 1 \
-  --output-dir /data/your-user/specagent/results/spectool_vstar_002
+# 完整启动入口默认使用整个 benchmark。
+bash start_test.sh --spectool --bench vstar --main-gpus 0 --draft-gpus 1
 ```
 
 ```text
@@ -245,6 +251,8 @@ bash start_test.sh --spectool --bench vstar --main-gpus 0 --draft-gpus 1 \
 ```bash
 bash start_test.sh --spectool --bench vstar --main-gpus 0 --draft-gpus 1
 ```
+
+两张 A800 80GB、每个模型单卡部署并运行完整 VStar 的示例，见 [README](../README.md#a800-80gb两卡运行完整-benchmark)。GPU 编号在启动参数中指定；结果根目录在 `.env` 中配置，无需手动分配端口。
 
 保留服务、暂不评测时可追加 `--services-only`。该高级模式会保留服务进程和本轮目录的 `pids/` 记录，需自行管理。日常小测优先使用会自动清理自身服务的 `scripts/run_test.sh`。
 

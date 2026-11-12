@@ -67,7 +67,8 @@ def main():
     dataset = DATASETS[args.bench][0]
     table = data / f"{dataset}.tsv"
     run_id = f"quick_{args.method}_{args.bench}_{time.strftime('%Y%m%d_%H%M%S')}_{time.time_ns()}"
-    run = args.output_dir.expanduser().resolve() if args.output_dir else work / "runs" / run_id
+    results = Path(env.get("SPECAGENT_RESULTS_ROOT", work / "runs")).expanduser().resolve()
+    run = args.output_dir.expanduser().resolve() if args.output_dir else results / run_id
     indices = run / "indices.json"
     output = run / "predictions"
     selected_method = "spectool" if args.method == "specreason" else args.method
