@@ -5,7 +5,6 @@ import json
 import os
 from pathlib import Path
 import shlex
-import socket
 import subprocess
 import time
 
@@ -26,6 +25,10 @@ def main():
     parser.add_argument("--main-tp", type=int)
     parser.add_argument("--draft-gpus")
     parser.add_argument("--draft-tp", type=int)
+    parser.add_argument("--main-port", type=int)
+    parser.add_argument("--draft-port", type=int)
+    parser.add_argument("--sandbox-port", type=int)
+    parser.add_argument("--redis-port", type=int)
     args = parser.parse_args()
     if args.samples < 1 or (args.main_tp is not None and args.main_tp < 1) or (args.draft_tp is not None and args.draft_tp < 1):
         parser.error("sample count and tensor parallel sizes must be positive")
@@ -42,9 +45,9 @@ def main():
             subprocess.run(command, env=env, check=True)
         return
     for key, value in {
-        "MAIN_GPUS": args.main_gpus or env.get("MAIN_GPUS", "0,1,2,3"),
-        "MAIN_TP": args.main_tp or env.get("MAIN_TP", "4"),
-        "DRAFT_GPUS": args.draft_gpus or env.get("DRAFT_GPUS", "4"),
+        "MAIN_GPUS": args.main_gpus or env.get("MAIN_GPUS", ""),
+        "MAIN_TP": args.main_tp or env.get("MAIN_TP", "1"),
+        "DRAFT_GPUS": args.draft_gpus or env.get("DRAFT_GPUS", ""),
         "DRAFT_TP": args.draft_tp or env.get("DRAFT_TP", "1"),
         "MODEL_MAX_LEN": env.get("MODEL_MAX_LEN", "32768"),
         "DRAFT_GPU_MEMORY_UTILIZATION": env.get("DRAFT_GPU_MEMORY_UTILIZATION", "0.9"),
@@ -71,6 +74,12 @@ def main():
     command = ["bash", str(ROOT / "start_test.sh"), f"--{selected_method}",
                "--bench", args.bench, "--mode", "infer", "--api-nproc", "1",
                "--work-dir", str(output)]
+    # Forward runtime allocation explicitly to the actual service launcher.
+    for name in ("main_gpus", "main_tp", "draft_gpus", "draft_tp",
+                 "main_port", "draft_port", "sandbox_port", "redis_port"):
+        value = getattr(args, name)
+        if value is not None:
+            command += ["--" + name.replace("_", "-"), str(value)]
     if not args.full:
         command += ["--index-file", str(indices)]
     if args.reuse_services:
@@ -87,6 +96,11 @@ def main():
     print(shlex.join(command), flush=True)
     if args.dry_run:
         return
+    if not args.reuse_services:
+        if args.method != "draft-only" and not env["MAIN_GPUS"]:
+            parser.error("Specify --main-gpus LIST when starting Main")
+        if args.method not in {"baseline", "direct"} and not env["DRAFT_GPUS"]:
+            parser.error("Specify --draft-gpus LIST when starting Draft")
     if not Path(python).is_file():
         raise SystemExit("Client environment missing. Run bash scripts/setup_env.sh --client-only")
     if not table.is_file():
@@ -104,17 +118,6 @@ def main():
         probe_gpus = env["DRAFT_GPUS"] if args.method == "draft-only" else env["MAIN_GPUS"]
         subprocess.run([server, str(ROOT / "scripts/doctor.py"), "--server"],
                        env=dict(env, CUDA_VISIBLE_DEVICES=probe_gpus), check=True)
-        ports = [int(env.get("MAIN_PORT", "8126"))]
-        if args.method not in {"direct", "baseline"}:
-            ports.append(int(env.get("DRAFT_PORT", "8129")))
-        if args.method != "direct":
-            ports += [int(env.get("SANDBOX_PORT", "18901")), int(env.get("SANDBOX_REDIS_PORT", "26379"))]
-        for port in ports:
-            with socket.socket() as listener:
-                try:
-                    listener.bind(("127.0.0.1", port))
-                except OSError as exc:
-                    raise SystemExit(f"Port {port} is busy. Choose free ports or explicitly use --reuse-services.") from exc
     if not args.full:
         subprocess.run([python, str(ROOT / "scripts/make_smoke_indices.py"), "--dataset", dataset,
                         "--table", str(table), "--count", str(args.samples), "--output", str(indices)], check=True)

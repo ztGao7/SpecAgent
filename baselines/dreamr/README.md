@@ -7,9 +7,9 @@
 与其他方法共用根目录 `.env`、客户端和 vLLM 环境、模型与 benchmark 路径。完成[快速配置](../../docs/QUICKSTART.md)后，在仓库根目录执行：
 
 ```bash
-bash scripts/run_test.sh --method dreamr --bench vstar --samples 2
+bash scripts/run_test.sh --method dreamr --bench vstar --samples 2 --main-gpus 0 --draft-gpus 1
 # 只查看计划：
-bash scripts/run_test.sh --method dreamr --bench mmstar --samples 2 --dry-run
+bash scripts/run_test.sh --method dreamr --bench mmstar --samples 2 --main-gpus 0 --draft-gpus 1 --dry-run
 ```
 
 入口自动准备本地 `runtime/`、启动 Main / Draft / sandbox、运行冻结的 EvalKit，并在退出时清理本次服务。无需初始化上游子模块，也无需安装上游 RL 训练依赖。完整 benchmark 使用 `--full`，复用已部署服务使用 `--reuse-services`。

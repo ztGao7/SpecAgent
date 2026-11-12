@@ -7,7 +7,7 @@ The local `specreason_adapter/` implements sequential **Draft → Main score →
 For the automatic setup and small-sample launcher, see [the quickstart](../../docs/QUICKSTART.md).
 
 ```bash
-bash scripts/run_test.sh --method specreason --bench vstar --samples 2
+bash scripts/run_test.sh --method specreason --bench vstar --samples 2 --main-gpus 0 --draft-gpus 1
 ```
 
 ## Dependencies

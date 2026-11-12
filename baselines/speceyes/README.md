@@ -12,7 +12,7 @@ The former duplicate overlay files were removed to avoid maintaining two copies.
 Follow [the quickstart](../../docs/QUICKSTART.md), then run:
 
 ```bash
-bash scripts/run_test.sh --method speceyes --bench vstar --samples 2
+bash scripts/run_test.sh --method speceyes --bench vstar --samples 2 --main-gpus 0 --draft-gpus 1
 ```
 
 The adaptation uses vLLM HTTP requests and shared visual-tool helpers instead of upstream local Transformers execution. Routing, confidence, batch barriers and fallback settings are defined in the maintained implementation. A small smoke run is not a throughput benchmark or a claim of unchanged upstream execution.

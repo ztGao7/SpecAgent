@@ -94,6 +94,21 @@ def test_startup_activates_exact_prefixes_without_name_lookup(checkout, tmp_path
     assert result.stdout.splitlines() == [f'activate:{client}', f'activate:{server}']
 
 
+@pytest.mark.parametrize('args,expected,gpus', [([], [], ''), (['--server', '--gpus', '6'], ['--server'], '6')])
+def test_doctor_default_and_explicit_gpu_arguments(checkout, tmp_path, args, expected, gpus):
+    base = tmp_path / 'conda'
+    init = base / 'etc/profile.d/conda.sh'
+    init.parent.mkdir(parents=True)
+    init.write_text('conda() { :; }\n')
+    (checkout / '.env').write_text(
+        f'CONDA_BASE="{base}"\nCLIENT_PYTHON="{sys.executable}"\nSERVER_PYTHON="{sys.executable}"\n')
+    (checkout / 'scripts/doctor.py').write_text(
+        'import json,os,sys; print(json.dumps([sys.argv[1:], os.environ.get("CUDA_VISIBLE_DEVICES", "")]))')
+    result = run(checkout, 'scripts/doctor.sh', *args, env=dict(os.environ, CUDA_VISIBLE_DEVICES=''))
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == [expected, gpus]
+
+
 def test_download_and_offline_check_use_same_custom_model_paths(checkout, tmp_path):
     # Only the network boundary is fake: run both real download and weight-check entry points.
     stub = tmp_path / 'network stub'

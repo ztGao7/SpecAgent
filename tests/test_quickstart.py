@@ -42,7 +42,8 @@ def test_model_run_without_dataset_fails_before_creating_run_directory(tmp_path)
     work = tmp_path / "data disk with spaces"
     env = dict(os.environ, SPECAGENT_WORK_ROOT=str(work), CLIENT_PYTHON=sys.executable,
                LMUData=str(work / "missing"))
-    result = subprocess.run(["bash", str(ROOT / "scripts/run_test.sh"), "--method", "spectool"],
+    result = subprocess.run(["bash", str(ROOT / "scripts/run_test.sh"), "--method", "spectool",
+                             "--main-gpus", "0", "--draft-gpus", "1"],
                             env=env, capture_output=True, text=True)
     assert result.returncode != 0
     assert "Dataset missing" in result.stderr

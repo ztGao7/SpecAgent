@@ -6,14 +6,14 @@
 
 ## 快速开始
 
-自动安装适用于 Linux x86_64 和 NVIDIA GPU。先配置数据盘路径及 GPU 分组，再安装环境、下载模型和测试数据。
+自动安装适用于 Linux x86_64 和 NVIDIA GPU。先配置数据盘路径，再安装环境、下载模型和测试数据；GPU 分组通过启动参数指定。
 
 ```bash
 git clone https://github.com/ztGao7/SpecAgent.git
 cd SpecAgent
 cp .env.example .env
 
-# 编辑 .env，设置可写的数据盘目录，以及 GPU 编号和张量并行数（TP）。
+# 编辑 .env，设置可写的数据盘目录及模型、数据路径。GPU 编号在启动命令中指定。
 # 所有入口自动读取仓库根目录 .env，无需 source 或激活环境。
 
 # Ubuntu/Debian 系统依赖（已安装可跳过；无 sudo 权限请管理员准备）。
@@ -28,7 +28,7 @@ bash scripts/run_test.sh
 # 安装完整的评测环境和模型服务环境，并检查依赖与 CUDA。
 bash scripts/setup_env.sh
 bash scripts/doctor.sh
-bash scripts/doctor.sh --server
+bash scripts/doctor.sh --server --gpus 0
 
 # 下载 Qwen3.5-27B、Qwen3.5-9B 和 VStar 测试数据。
 bash scripts/download_models.sh
@@ -36,7 +36,7 @@ bash scripts/download_data.sh --bench vstar
 bash scripts/doctor.sh --paths --bench vstar
 
 # 启动所需服务，选取两个固定样本进行真实模型推理。
-bash scripts/run_test.sh --method spectool --bench vstar --samples 2
+bash scripts/run_test.sh --method spectool --bench vstar --samples 2 --main-gpus 0 --draft-gpus 1
 ```
 
 国内网络下载较慢时，可在 `.env` 启用示例中的 `PIP_INDEX_URL`、`PYTORCH_INDEX_URL` 和 `HF_ENDPOINT`；GitHub wheel 下载受限时，按[快速入门](docs/QUICKSTART.md)设置 `VLLM_WHEEL` 本地包或 `VLLM_WHEEL_URL`。首次安装需要下载数 GB 依赖，耗时取决于网络。
@@ -49,13 +49,15 @@ bash scripts/run_test.sh --method spectool --bench vstar --samples 2
 
 | 方法 | 快速测试命令 |
 | --- | --- |
-| Spectool | `bash scripts/run_test.sh --method spectool --samples 2` |
-| SpecEyes 适配实现 | `bash scripts/run_test.sh --method speceyes --samples 2` |
-| DreamR 视觉工具适配 | `bash scripts/run_test.sh --method dreamr --samples 2` |
-| SpecReason 适配实现 | `bash scripts/run_test.sh --method specreason --samples 2` |
-| Main 工具 Agent 基线 | `bash scripts/run_test.sh --method baseline --samples 2` |
-| Main 直接回答基线 | `bash scripts/run_test.sh --method direct --samples 2` |
-| Draft 工具 Agent 基线 | `bash scripts/run_test.sh --method draft-only --samples 2` |
+| Spectool | `bash scripts/run_test.sh --method spectool --samples 2 --main-gpus 0 --draft-gpus 1` |
+| SpecEyes 适配实现 | `bash scripts/run_test.sh --method speceyes --samples 2 --main-gpus 0 --draft-gpus 1` |
+| DreamR 视觉工具适配 | `bash scripts/run_test.sh --method dreamr --samples 2 --main-gpus 0 --draft-gpus 1` |
+| SpecReason 适配实现 | `bash scripts/run_test.sh --method specreason --samples 2 --main-gpus 0 --draft-gpus 1` |
+| Main 工具 Agent 基线 | `bash scripts/run_test.sh --method baseline --samples 2 --main-gpus 0` |
+| Main 直接回答基线 | `bash scripts/run_test.sh --method direct --samples 2 --main-gpus 0` |
+| Draft 工具 Agent 基线 | `bash scripts/run_test.sh --method draft-only --samples 2 --draft-gpus 1` |
+
+GPU 参数会传给 `start_test.sh`，Main / Draft 的 TP 默认均为 1；多卡部署需同时指定 `--main-tp` / `--draft-tp`。默认启动会自动选择空闲端口，遇到已有 vLLM 也会跳过；仅 `--reuse-services` 显式复用服务。
 
 默认数据集为 VStar，可用 `--bench` 切换。常用选项：
 
@@ -90,7 +92,7 @@ git submodule update --init --recursive
 
 ## 验证情况与使用范围
 
-默认 CPU 快速测试目前为 **149 项，已在 macOS 和 Linux 新客户端环境通过**，包括 `.env`、路径传递和启动入口回归。已从 GitHub clone，使用新建的客户端与 vLLM 环境、现有模型及数据，在两张扩容 4090（约 48/45 GiB）上完成 Spectool / VStar 两样本真实推理，两个样本均生成有效预测，本次服务及通信目录自动清理。模型为 Qwen3.8-27B-FP8 + Qwen3.5-9B。DreamR 也已从 GitHub 全新 clone 后完成 VStar 两样本推理，核对了阈值验证、并行改写和取消记录。详细范围见[验证说明](docs/VALIDATION.md)。
+默认 CPU 快速测试目前为 **171 项，已在 macOS 和 Linux 新客户端环境通过**，包括 `.env`、GPU 参数传递、真实端口占用、并发端口预留及退出清理回归。2026-11-11 已从 GitHub clone，使用新建的客户端与 vLLM 环境、现有模型及数据，在两张扩容 4090（约 48/45 GiB）上完成 Spectool / VStar 两样本真实推理，两个样本均生成有效预测，本次服务及通信目录自动清理。模型为 Qwen3.8-27B-FP8 + Qwen3.5-9B。DreamR 也已从 GitHub 全新 clone 后完成 VStar 两样本推理，核对了阈值验证、并行改写和取消记录。2026-11-12 的 GPU 参数与端口修改通过 CPU / 真实 socket 检查，因 GPU 均被现有实验占用，本轮未重跑模型推理。详细范围见[验证说明](docs/VALIDATION.md)。
 
 原始研究测试保留在 `spectool/tests` 中，其中部分仍针对已移除的接口，完整套件存在已知失败，可通过 `bash scripts/test.sh --full` 查看。目标机器仍需执行小样本验证；以上检查不代表全 benchmark 准确率、加速比或 A800 性能已经验证。
 

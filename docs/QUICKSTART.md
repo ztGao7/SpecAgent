@@ -18,13 +18,9 @@ cp .env.example .env
 
 ```bash
 SPECAGENT_WORK_ROOT=/data/你的用户名/specagent
-MAIN_GPUS=0
-MAIN_TP=1
-DRAFT_GPUS=1
-DRAFT_TP=1
 ```
 
-上面 GPU 示例按两张 80GB 卡安排，Main / Draft 各占一张。使用 24GB 卡时，可将 Main 改为四卡 TP=4、Draft 单卡 TP=1（共五张）；TP 必须与对应 GPU 数量一致，Main/Draft 不要共用 GPU。27B 权重约 52 GiB、9B 约 19 GiB，还需要 KV cache、视觉编码器和运行缓冲显存；不是任意 GPU 组合都能运行。先用 `nvidia-smi` 确认机器的实际配置和空闲显存。
+`.env` 保存环境、资源路径和模型运行配置，GPU 编号及 TP 在每次启动时用参数指定。两张 80GB 卡可使用 `--main-gpus 0 --draft-gpus 1`，TP 默认均为 1。使用 24GB 卡时，可改为 `--main-gpus 0,1,2,3 --main-tp 4 --draft-gpus 4 --draft-tp 1`（共五张）；TP 必须与对应 GPU 数量一致，Main/Draft 不要共用 GPU。27B 权重约 52 GiB、9B 约 19 GiB，还需要 KV cache、视觉编码器和运行缓冲显存。先用 `nvidia-smi` 确认实际配置和空闲显存。
 
 保存后直接运行脚本，**无需手动 `source .env` 或 `conda activate`**。`scripts/*.sh` 和根目录 `start_test.sh` 自动读取仓库根目录 `.env`，与当前终端所在目录无关。`.env` 是可信的本地 Bash 配置；路径含空格时加引号，不要加载来源不明的配置文件。
 
@@ -33,7 +29,7 @@ DRAFT_TP=1
 需要切换实验配置时：
 
 ```bash
-SPECAGENT_ENV_FILE=/绝对路径/实验.env bash scripts/run_test.sh --method spectool --bench vstar --samples 2
+SPECAGENT_ENV_FILE=/绝对路径/实验.env bash scripts/run_test.sh --method spectool --bench vstar --samples 2 --main-gpus 0 --draft-gpus 1
 ```
 
 显式指定的配置文件不存在会立即报错。默认 `.env` 不存在时，仍可只用环境变量或默认值运行。
@@ -70,12 +66,12 @@ bash scripts/setup_env.sh --dry-run
 ```bash
 bash scripts/setup_env.sh
 bash scripts/doctor.sh
-bash scripts/doctor.sh --server
+bash scripts/doctor.sh --server --gpus 0
 ```
 
 先安装第 1 节的系统依赖，确保 `redis-server` 在 PATH 中（或已放在所选客户端环境的 `bin/` 中）。安装器不会通过 Conda 安装 Redis。它自动下载并校验 Miniconda，创建 `spectool`（客户端）和 `vllm0251`（模型服务）两个环境，安装已固定的核心版本。客户端完整依赖在 Linux x86_64 / Python 3.10 下解析并记录为 `requirements/client-linux.lock`；原始依赖清单位于 `requirements/client.txt`。客户端 Torch 仅用于库依赖，评测通过 HTTP 调用模型，不要求客户端 CUDA 可用。
 
-`doctor.sh` 检查客户端导入、模型注册和 Redis / setsid 命令；`doctor.sh --server` 检查 vLLM、Torch、TorchCodec 的 CUDA 12.9 版本，执行真实 CUDA tensor 运算及 `vllm serve --help` 导入检查，不加载模型。任何失败都应先处理，再启动正式模型测试。
+`doctor.sh` 检查客户端导入、模型注册和 Redis / setsid 命令；`doctor.sh --server --gpus 0` 在所选 GPU 上检查 vLLM、Torch、TorchCodec 的 CUDA 12.9 版本，执行真实 CUDA tensor 运算及 `vllm serve --help` 导入检查，不加载模型。任何失败都应先处理，再启动正式模型测试。
 
 可单独安装：
 
@@ -155,21 +151,25 @@ bash scripts/download_models.sh --check-only
 首先预览将运行的命令：
 
 ```bash
-bash scripts/run_test.sh --method spectool --bench vstar --samples 2 --dry-run
+bash scripts/run_test.sh --method spectool --bench vstar --samples 2 --main-gpus 0 --draft-gpus 1 --dry-run
 ```
 
 然后任选方法：
 
 ```bash
-bash scripts/run_test.sh --method spectool --bench vstar --samples 2
-bash scripts/run_test.sh --method speceyes --bench vstar --samples 2
-bash scripts/run_test.sh --method specreason --bench vstar --samples 2
-bash scripts/run_test.sh --method dreamr --bench vstar --samples 2
-bash scripts/run_test.sh --method baseline --bench vstar --samples 2
-bash scripts/run_test.sh --method direct --bench vstar --samples 2
+bash scripts/run_test.sh --method spectool --bench vstar --samples 2 --main-gpus 0 --draft-gpus 1
+bash scripts/run_test.sh --method speceyes --bench vstar --samples 2 --main-gpus 0 --draft-gpus 1
+bash scripts/run_test.sh --method specreason --bench vstar --samples 2 --main-gpus 0 --draft-gpus 1
+bash scripts/run_test.sh --method dreamr --bench vstar --samples 2 --main-gpus 0 --draft-gpus 1
+bash scripts/run_test.sh --method baseline --bench vstar --samples 2 --main-gpus 0
+bash scripts/run_test.sh --method direct --bench vstar --samples 2 --main-gpus 0
 ```
 
-每条命令独立运行，使用配置中的客户端 Python，先核对环境、数据和端口，再启动需要的 vLLM / Redis / sandbox 服务、等待就绪并执行推理。新启动的服务会在该测试结束后清理；端口被占用时快速入口会报错，不会默认接入未知服务。Main/Draft 默认端口为 8126/8129，sandbox 为 18901，Redis 为 26379，可通过环境变量覆盖。
+每条命令独立运行，使用配置中的客户端 Python，先核对环境和数据，再自动分配端口、启动需要的 vLLM / Redis / sandbox 服务、等待就绪并执行推理。GPU 参数原样传给 `start_test.sh`；未指定所需 GPU 时直接报错，不会默认占用其他卡。新启动的服务会在测试结束后清理。
+
+无需在 `.env` 中指定端口。Main / Draft 从 8126 / 8129 开始，sandbox / Redis 从 18901 / 26379 开始；遇到占用或其他实验的预留，默认每次加 100，最多尝试 50 次并检查端口范围。选择结果会显示在启动摘要，并写入本次 `RUN_DIR/pids/ports.ready`。跨工作目录的启动器通过同一用户的本机端口锁预留，避免模型加载期间的并发抢占；结束或启动失败时释放。其他不使用本启动器的程序仍可能在检查后抢占端口，此时应重试，不会自动复用其服务。
+
+可用 `--main-port` / `--draft-port` / `--sandbox-port` / `--redis-port` 修改搜索起点；`--reuse-services` 和 `--no-services` 则使用给定的准确端口，不搜索替代端口。
 
 默认固定选择 TSV 中前两个不同 index，不按正确答案挑选。输出目录每次唯一，位于 `$SPECAGENT_WORK_ROOT/runs/`，包含选择的 index、服务日志、预测表及轨迹。`infer` 模式只运行推理，不依赖外部评分 API；生成预测文件不自动等同于预测正确。
 
@@ -180,15 +180,16 @@ DreamR 使用独立适配控制器，按正标签概率阈值验证 Draft，并�
 已有符合配置的服务时：
 
 ```bash
-bash scripts/run_test.sh --method spectool --bench vstar --samples 2 --reuse-services
+bash scripts/run_test.sh --method spectool --bench vstar --samples 2 --reuse-services \
+  --main-port 8126 --draft-port 8129 --sandbox-port 18901
 ```
 
-此模式验证并使用配置端口上的现有服务，不停止它们。应确认模型服务的实际模型、参数和负载；与其他实验共享服务不适合做严谨的耗时比较。
+此模式无需分配 GPU，验证并使用指定端口上的现有服务，不停止它们。应确认模型服务的实际模型、参数和负载；与其他实验共享服务不适合做严谨的耗时比较。
 
 完整数据集需显式启用：
 
 ```bash
-bash scripts/run_test.sh --method spectool --bench vstar --full
+bash scripts/run_test.sh --method spectool --bench vstar --full --main-gpus 0 --draft-gpus 1
 ```
 
 ## 6. 高级入口与故障处理
@@ -197,15 +198,21 @@ bash scripts/run_test.sh --method spectool --bench vstar --full
 
 工作目录路径较长也可使用：脚本为每个 vLLM 服务自动选择数据盘上可写的短通信目录，避免 Unix socket 路径超过系统限制，结束后只清理本次创建的目录。若自动选择失败，可在 `.env` 指定短的可写父目录，例如 `SPECAGENT_IPC_ROOT=/data/your-user/ipc`。模型、数据和编译缓存仍使用原配置路径。
 
-保留服务、暂不评测时可使用 `bash start_test.sh --spectool --services-only`。该高级模式会保留服务进程和 `.runs/<run-id>/pids` 记录，需自行管理。日常小测优先使用会自动清理自身服务的 `scripts/run_test.sh`。
+直接使用完整入口时，例如：
+
+```bash
+bash start_test.sh --spectool --bench vstar --main-gpus 0 --draft-gpus 1
+```
+
+保留服务、暂不评测时可追加 `--services-only`。该高级模式会保留服务进程和 `.runs/<run-id>/pids` 记录，需自行管理。日常小测优先使用会自动清理自身服务的 `scripts/run_test.sh`。
 
 | 问题 | 检查 |
 | --- | --- |
-| CUDA 不可用 / GPU OOM | `doctor.sh --server`、驱动、显存、GPU/TP 分组；必要时减小上下文和并发 |
+| CUDA 不可用 / GPU OOM | `doctor.sh --server --gpus 0`、驱动、显存、GPU/TP 分组；必要时减小上下文和并发 |
 | 下载失败 | 网络/代理、`HF_ENDPOINT` 和可用空间；模型下载中断后执行同一命令 |
 | benchmark 缺失 | 运行 `download_data.sh --bench ...`，或检查 `LMUData` 指向的 TSV |
 | Conda / Python 路径错误 | 检查 `.env` 及已导出的同名变量，运行 `setup_env.sh --dry-run`、`doctor.sh --paths --bench vstar` 查看路径 |
-| 端口冲突 | 设置空闲的 `MAIN_PORT` / `DRAFT_PORT` / `SANDBOX_PORT` / `SANDBOX_REDIS_PORT`，或显式复用已确认的服务 |
+| 端口冲突 | 默认自动寻找空闲端口；检查本次 `logs/ports.log`，或用启动参数更换搜索起点。复用服务必须显式传 `--reuse-services` 和准确端口 |
 | 客户端 pyarrow 被屏蔽 | 不要给客户端设置 `compat/vllm_no_pyarrow` 的 PYTHONPATH；兼容模块只用于 vLLM 进程 |
 
 TorchCodec 固定为 `0.15.0+cu129`，避免解析到默认 CUDA 13 wheel 后出现 `libnvrtc.so.13` 缺失、导致模型服务无法启动的[上游问题](https://github.com/vllm-project/vllm/issues/63121)。

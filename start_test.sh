@@ -77,9 +77,9 @@ GPU_CHECK="${GPU_CHECK:-true}"
 GPU_CHECK_STRICT="${GPU_CHECK_STRICT:-true}"
 VLLM_NUMA_BIND="${VLLM_NUMA_BIND:-auto}"
 
-MAIN_GPUS="${MAIN_GPUS:-0,1}"
-DRAFT_GPUS="${DRAFT_GPUS:-4}"
-MAIN_TP="${MAIN_TP:-2}"
+MAIN_GPUS="${MAIN_GPUS:-}"
+DRAFT_GPUS="${DRAFT_GPUS:-}"
+MAIN_TP="${MAIN_TP:-1}"
 DRAFT_TP="${DRAFT_TP:-1}"
 DRAFT_REPLICAS="${DRAFT_REPLICAS:-1}"
 MAIN_GPU_MEMORY_UTILIZATION="${MAIN_GPU_MEMORY_UTILIZATION:-0.9}"
@@ -107,7 +107,7 @@ INDEX_FILE="${INDEX_FILE:-}"       # --index-file: JSON {dataset: [index,...]} s
 RUN_EVAL=true
 KILL_EXISTING=false
 RUN_MODE="${RUN_MODE:-spectool}"  # spectool | speceyes | baseline | direct | draft-only
-RESERVED_PORTS=()
+PORT_RESERVATION_PID=""
 STARTED_VLLM_MAIN=false
 STARTED_VLLM_DRAFT_SERVICES=()
 STARTED_SANDBOX=false
@@ -172,17 +172,17 @@ usage() {
         "  --sample-wall-budget N  Whole-sample wall budget in seconds (0 disables)" \
         "" \
         "Service options:" \
-        "  --main-port PORT        Main vLLM port (default: 8126)" \
-        "  --draft-port PORT       First Draft vLLM port (default: 8129)" \
+        "  --main-port PORT        Main starting port (default: 8126; skips busy ports)" \
+        "  --draft-port PORT       First Draft starting port (default: 8129)" \
         "  --draft-ports LIST      Explicit comma-separated Draft replica ports" \
         "  --sandbox-port PORT     Sandbox API port (default: 18901)" \
         "  --redis-port PORT       Sandbox Redis port (default: 26379)" \
         "  --port-offset N         Add N until an unused port is found (default: 100)" \
         "  --port-max-tries N      Max attempts per port family (default: 50)" \
-        "  --main-gpus LIST        CUDA_VISIBLE_DEVICES for main (default: 0,1)" \
-        "  --draft-gpus LIST       Draft GPUs (default: 4). For TP=1 replicas," \
+        "  --main-gpus LIST        Main GPU IDs; required when starting Main" \
+        "  --draft-gpus LIST       Draft GPU IDs; required when starting Draft. For TP=1 replicas," \
         "                          pass one GPU per replica, e.g. 4,5" \
-        "  --main-tp N             Main tensor parallel size (default: 2)" \
+        "  --main-tp N             Main tensor parallel size (default: 1)" \
         "  --draft-tp N            Tensor parallel size per Draft replica (default: 1)" \
         "  --draft-replicas N      Independent Draft services (default: 1)" \
         "  --main-max-num-batched-tokens N" \
@@ -205,10 +205,10 @@ usage() {
         "  --run-id ID             Run directory name under .runs/" \
         "" \
         "Examples:" \
-        "  bash start_test.sh --spectool --bench vstar" \
-        "  bash start_test.sh --baseline --api-nproc 4 --main-port 8126" \
+        "  bash start_test.sh --spectool --bench vstar --main-gpus 0 --draft-gpus 1" \
+        "  bash start_test.sh --baseline --main-gpus 0 --api-nproc 4" \
         "  bash start_test.sh --draft-only --draft-gpus 4 --draft-tp 1 --draft-port 8129" \
-        "  bash start_test.sh --spectool --draft-tp 1 --draft-replicas 2 --draft-gpus 4,5" \
+        "  bash start_test.sh --spectool --main-gpus 0 --draft-tp 1 --draft-replicas 2 --draft-gpus 4,5" \
         "  bash start_test.sh --no-services --spectool --main-port 8128 --draft-ports 8129,8130 --draft-replicas 2 --draft-gpus 4,5"
 }
 
@@ -306,8 +306,12 @@ resolve_draft_layout() {
         || die "DRAFT_TP must be a positive integer: $DRAFT_TP"
 
     compact="${DRAFT_GPUS// /}"
-    [[ -n "$compact" ]] || die "DRAFT_GPUS must not be empty"
-    if (( DRAFT_REPLICAS == 1 )); then
+    if [[ -z "$compact" && "$START_SERVICES" == false ]]; then
+        # Resident endpoints need ports, not a GPU allocation.
+        for ((idx=0; idx<DRAFT_REPLICAS; idx++)); do raw_groups+=(""); done
+    elif [[ -z "$compact" ]]; then
+        die "Specify --draft-gpus LIST when starting Draft (GPU IDs do not belong in .env)"
+    elif (( DRAFT_REPLICAS == 1 )); then
         raw_groups=("$compact")
     elif (( DRAFT_TP == 1 )) && [[ "$compact" != *';'* ]]; then
         # Ergonomic form for two independent TP=1 replicas: --draft-gpus 4,5
@@ -321,7 +325,12 @@ resolve_draft_layout() {
 
     DRAFT_GPU_GROUP_LIST=()
     for group in "${raw_groups[@]}"; do
+        if [[ -z "$group" && "$START_SERVICES" == false ]]; then
+            DRAFT_GPU_GROUP_LIST+=("")
+            continue
+        fi
         [[ -n "$group" ]] || die "Draft GPU groups must not be empty: $DRAFT_GPUS"
+        [[ "$group" =~ ^[0-9]+(,[0-9]+)*$ ]] || die "Draft GPU group must be comma-separated GPU IDs: $group"
         IFS=',' read -r -a group_gpus <<< "$group"
         gpu_count="${#group_gpus[@]}"
         (( gpu_count == DRAFT_TP )) || die \
@@ -337,8 +346,9 @@ resolve_draft_layout() {
         DRAFT_GPU_GROUP_LIST+=("$group")
     done
 
-    if [[ "$RUN_MODE" == "spectool" ]]; then
+    if [[ -n "$MAIN_GPUS" && -n "$DRAFT_GPUS" && ( "$RUN_MODE" == "spectool" || "$RUN_MODE" == "speceyes" ) ]]; then
         compact="${MAIN_GPUS// /}"
+        [[ "$compact" =~ ^[0-9]+(,[0-9]+)*$ ]] || die "Main GPUs must be comma-separated GPU IDs: $MAIN_GPUS"
         IFS=',' read -r -a main_gpus <<< "$compact"
         for gpu in "${seen_gpus[@]}"; do
             for main_gpu in "${main_gpus[@]}"; do
@@ -677,6 +687,7 @@ cleanup_services_on_exit() {
     if [[ "$RUN_EVAL" == true ]]; then
         cleanup_local_media_dir
     fi
+    release_port_reservations
     exit "$status"
 }
 
@@ -705,14 +716,6 @@ wait_for() {
     return 1
 }
 
-port_is_reserved() {
-    local port="$1" p
-    for p in "${RESERVED_PORTS[@]:-}"; do
-        [[ "$p" == "$port" ]] && return 0
-    done
-    return 1
-}
-
 port_is_listening() {
     local port="$1"
     if command -v ss >/dev/null 2>&1; then
@@ -730,54 +733,58 @@ port_is_listening() {
     (echo >/dev/tcp/127.0.0.1/"$port") >/dev/null 2>&1
 }
 
-choose_port() {
-    local label="$1" start="$2" port tries
-    port="$start"
-    for ((tries=1; tries<=PORT_MAX_TRIES; tries++)); do
-        if ! port_is_reserved "$port" && ! port_is_listening "$port"; then
-            RESERVED_PORTS+=("$port")
-            if [[ "$port" != "$start" ]]; then
-                printf '[%s] %s\n' "$(date '+%F %T')" \
-                    "$label port $start is busy; using $port" >&2
-            fi
-            printf '%s\n' "$port"
-            return 0
-        fi
-        port=$((port + PORT_OFFSET))
-    done
-    die "No free $label port found from $start with offset $PORT_OFFSET after $PORT_MAX_TRIES tries"
+release_port_reservations() {
+    if [[ -n "$PORT_RESERVATION_PID" ]]; then
+        kill -TERM "$PORT_RESERVATION_PID" 2>/dev/null || true
+        wait "$PORT_RESERVATION_PID" 2>/dev/null || true
+        PORT_RESERVATION_PID=""
+    fi
 }
 
 resolve_ports() {
-    local idx port name
-    RESERVED_PORTS=()
+    local idx port name old ready_file i
+    local -a requests=(--port "main=$MAIN_PORT")
     [[ "$PORT_OFFSET" =~ ^[1-9][0-9]*$ ]] || die "PORT_OFFSET must be a positive integer: $PORT_OFFSET"
     [[ "$PORT_MAX_TRIES" =~ ^[1-9][0-9]*$ ]] || die "PORT_MAX_TRIES must be a positive integer: $PORT_MAX_TRIES"
     if [[ "$RUN_MODE" != direct ]]; then
-        [[ "$SANDBOX_PORT" =~ ^[0-9]+$ ]] || die "SANDBOX_PORT must be numeric: $SANDBOX_PORT"
-        [[ "$SANDBOX_REDIS_PORT" =~ ^[0-9]+$ ]] || die "SANDBOX_REDIS_PORT must be numeric: $SANDBOX_REDIS_PORT"
-        SANDBOX_PORT="$(choose_port sandbox "$SANDBOX_PORT")"
-        SANDBOX_REDIS_PORT="$(choose_port redis "$SANDBOX_REDIS_PORT")"
-    fi
-    if probe_http "http://127.0.0.1:${MAIN_PORT}/v1/models"; then
-        RESERVED_PORTS+=("$MAIN_PORT")
-        log "main vLLM already deployed on port $MAIN_PORT; reusing it"
-    else
-        MAIN_PORT="$(choose_port main "$MAIN_PORT")"
+        requests+=(--port "sandbox=$SANDBOX_PORT" --port "redis=$SANDBOX_REDIS_PORT")
     fi
     if [[ "$START_DRAFT" == true ]]; then
         for idx in "${!DRAFT_PORT_LIST[@]}"; do
-            port="${DRAFT_PORT_LIST[$idx]}"
-            name="${DRAFT_SERVICE_NAMES[$idx]}"
-            if probe_http "http://127.0.0.1:${port}/v1/models"; then
-                RESERVED_PORTS+=("$port")
-                log "$name vLLM already deployed on port $port; reusing it"
-            else
-                DRAFT_PORT_LIST[$idx]="$(choose_port "$name" "$port")"
-            fi
+            requests+=(--port "${DRAFT_SERVICE_NAMES[$idx]}=${DRAFT_PORT_LIST[$idx]}")
         done
-        DRAFT_PORT="${DRAFT_PORT_LIST[0]}"
     fi
+    ready_file="$RUN_DIR/pids/ports.ready"
+    rm -f -- "$ready_file"
+    "$CLIENT_PYTHON" "$CODE_ROOT/scripts/service_ports.py" \
+        "${requests[@]}" --offset "$PORT_OFFSET" --tries "$PORT_MAX_TRIES" \
+        --parent "$$" --output "$ready_file" >"$RUN_DIR/logs/ports.log" 2>&1 &
+    PORT_RESERVATION_PID=$!
+    for ((i=0; i<200; i++)); do
+        [[ ! -f "$ready_file" ]] || break
+        kill -0 "$PORT_RESERVATION_PID" 2>/dev/null \
+            || die "Port allocation failed; see $RUN_DIR/logs/ports.log"
+        sleep 0.1
+    done
+    [[ -f "$ready_file" ]] || die "Port allocation timed out; see $RUN_DIR/logs/ports.log"
+    while read -r name port; do
+        case "$name" in
+            main) old="$MAIN_PORT"; MAIN_PORT="$port" ;;
+            sandbox) old="$SANDBOX_PORT"; SANDBOX_PORT="$port" ;;
+            redis) old="$SANDBOX_REDIS_PORT"; SANDBOX_REDIS_PORT="$port" ;;
+            *)
+                for idx in "${!DRAFT_SERVICE_NAMES[@]}"; do
+                    if [[ "$name" == "${DRAFT_SERVICE_NAMES[$idx]}" ]]; then
+                        old="${DRAFT_PORT_LIST[$idx]}"
+                        DRAFT_PORT_LIST[$idx]="$port"
+                        break
+                    fi
+                done
+                ;;
+        esac
+        [[ "$old" == "$port" ]] || log "$name port $old is busy/reserved; using $port"
+    done < "$ready_file"
+    if [[ "$START_DRAFT" == true ]]; then DRAFT_PORT="${DRAFT_PORT_LIST[0]}"; fi
     EVAL_MAIN_PORT="$MAIN_PORT"
 }
 
@@ -880,14 +887,7 @@ start_vllm() {
     local lf pf service_pid numa_info numa_status numa_node numa_cpus="" ipc_dir
     lf="$(log_file "vllm_${name}")"
     pf="$(pid_file "vllm_${name}")"
-    if probe_http "http://127.0.0.1:${port}/v1/models"; then
-        cancel_pending_vllm_cleanups "vllm_${name}"
-        log "vLLM $name already ready on port $port; reusing it"
-        if [[ "$name" == "main" ]]; then
-            STARTED_VLLM_MAIN=false
-        fi
-        return 0
-    fi
+    ! port_is_listening "$port" || die "Selected $name port $port was taken before startup; retry the launcher"
     check_gpu_group "vLLM $name" "$gpus" "$mem" "$tp"
     if [[ "$VLLM_NUMA_BIND" == "auto" ]]; then
         if [[ ! -r "$NUMA_EXEC" ]]; then
@@ -975,11 +975,8 @@ start_sandbox() {
     lf="$(log_file sandbox)"
     pf="$(pid_file sandbox)"
     tmp_base="${TMPDIR:-$RESOURCE_DIR/.tmp}/spectool_sandbox_${RUN_ID}_${SANDBOX_PORT}"
-    if probe_http "http://127.0.0.1:${SANDBOX_PORT}/docs" \
-            && probe_sandbox "http://127.0.0.1:${SANDBOX_PORT}/run_jupyter"; then
-        log "Sandbox already ready on port $SANDBOX_PORT; reusing it"
-        return 0
-    fi
+    ! port_is_listening "$SANDBOX_PORT" || die "Selected sandbox port $SANDBOX_PORT was taken before startup; retry the launcher"
+    ! port_is_listening "$SANDBOX_REDIS_PORT" || die "Selected Redis port $SANDBOX_REDIS_PORT was taken before startup; retry the launcher"
     SANDBOX_TMP_BASE="$tmp_base"
     redis_override="$tmp_base/redis"
     ipython_override="$tmp_base/ipython"
@@ -1115,6 +1112,23 @@ resolve_mode() {
             ;;
         *) die "Invalid RUN_MODE: $RUN_MODE" ;;
     esac
+    if [[ "$START_SERVICES" == true ]]; then
+        local compact gpu seen
+        local -a main_gpus=() seen_main=()
+        [[ -n "$MAIN_GPUS" ]] || die "Specify --main-gpus LIST when starting Main (GPU IDs do not belong in .env)"
+        [[ "$MAIN_TP" =~ ^[1-9][0-9]*$ ]] || die "MAIN_TP must be a positive integer: $MAIN_TP"
+        compact="${MAIN_GPUS// /}"
+        [[ "$compact" =~ ^[0-9]+(,[0-9]+)*$ ]] || die "Main GPUs must be comma-separated GPU IDs: $MAIN_GPUS"
+        IFS=',' read -r -a main_gpus <<< "$compact"
+        (( ${#main_gpus[@]} == MAIN_TP )) || die "Main GPU count must match --main-tp $MAIN_TP: $MAIN_GPUS"
+        for gpu in "${main_gpus[@]}"; do
+            [[ "$gpu" =~ ^[0-9]+$ ]] || die "Main GPU id must be numeric: $gpu"
+            for seen in "${seen_main[@]:-}"; do
+                [[ "$gpu" != "$seen" ]] || die "Main GPU $gpu is assigned more than once"
+            done
+            seen_main+=("$gpu")
+        done
+    fi
     WORK_DIR="${WORK_DIR:-$SPECTOOL_ROOT/outputs/${RUN_MODE}_${BENCH}_${RUN_ID}}"
 }
 
@@ -1249,6 +1263,7 @@ print_summary() {
         "Eval driver : ${SPECAGENT_EVAL_DRIVER:-vlmeval}" \
         "Run dir     : $RUN_DIR" \
         "Main URL    : http://127.0.0.1:${MAIN_PORT}/v1" \
+        "Main layout : TP=${MAIN_TP} GPUs=${MAIN_GPUS:-<resident>}" \
         "Draft URL(s): $draft_url" \
         "Draft layout: replicas=${DRAFT_REPLICAS} TP=${DRAFT_TP} GPUs=${DRAFT_GPUS}" \
         "Max steps   : $MAX_STEPS (agents only; direct always uses one request)" \
@@ -1271,15 +1286,15 @@ main() {
     parse_args "$@"
     resolve_mode
     trap cleanup_services_on_exit EXIT INT TERM
-    if [[ "$START_SERVICES" == true ]]; then
-        resolve_ports
-    fi
     setup_paths
     if [[ "$REUSE_SERVICES" == true ]]; then
         check_reused_services
     fi
     if [[ "$KILL_EXISTING" == true ]]; then
         stop_recorded_services
+    fi
+    if [[ "$START_SERVICES" == true ]]; then
+        resolve_ports
     fi
     print_summary
     if [[ "$START_SERVICES" == true ]]; then
@@ -1288,6 +1303,7 @@ main() {
     if [[ "$RUN_EVAL" == true ]]; then
         run_eval
     else
+        release_port_reservations
         trap - EXIT INT TERM
         log "Services started; eval skipped by --services-only"
     fi

@@ -5,6 +5,7 @@ import os
 from functools import partial
 from pathlib import Path
 import subprocess
+import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -183,10 +184,10 @@ def test_real_sdk_and_evalkit_adapter_without_network(setup):
     assert "tools" not in body and "logprobs" not in body
 
 
-def test_direct_launcher_skips_sandbox_and_draft():
+def test_direct_launcher_skips_sandbox_and_draft(tmp_path):
     script = r'''
 source "$1"
-parse_args --direct --bench hrbench4k --api-nproc 4
+parse_args --direct --bench hrbench4k --api-nproc 4 --main-gpus 0,1 --main-tp 2
 resolve_mode
 [[ "$MODEL" == Qwen3.5-27B-vLLM && "$START_DRAFT" == false ]]
 [[ "$MAIN_MAX_MODEL_LEN" == 160000 && "$API_NPROC" == 4 ]]
@@ -195,15 +196,17 @@ start_sandbox() { echo UNEXPECTED_SANDBOX; return 1; }
 print_gpu_snapshot() { :; }
 start_vllm() { echo "VLLM=$1 TP=$5"; }
 start_services
-probe_http() { return 1; }
-choose_port() { [[ "$1" == main ]] || return 1; printf '%s' "$2"; }
+mkdir -p "$RUN_DIR/logs" "$RUN_DIR/pids"
 resolve_ports
+[[ $(wc -l < "$RUN_DIR/pids/ports.ready") -eq 1 ]]
+release_port_reservations
 '''
     result = subprocess.run(["bash", "-c", script, "_", str(LAUNCHER)],
                             # This test checks benchmark defaults, independently
                             # of the user's automatically loaded GPU/context .env.
                             env={**os.environ, "SPECTOOL_START_TEST_SOURCE_ONLY": "1",
-                                 "MAIN_MAX_MODEL_LEN": "", "MAIN_TP": "2"},
+                                 "MAIN_MAX_MODEL_LEN": "", "MAIN_TP": "2",
+                                 "RUN_DIR": str(tmp_path), "CLIENT_PYTHON": sys.executable},
                             text=True, capture_output=True)
     assert result.returncode == 0, result.stderr
     assert "VLLM=main TP=2" in result.stdout
