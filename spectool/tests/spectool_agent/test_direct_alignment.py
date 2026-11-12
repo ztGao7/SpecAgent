@@ -190,7 +190,7 @@ source "$1"
 parse_args --direct --bench hrbench4k --api-nproc 4 --main-gpus 0,1 --main-tp 2
 resolve_mode
 [[ "$MODEL" == Qwen3.5-27B-vLLM && "$START_DRAFT" == false ]]
-[[ "$MAIN_MAX_MODEL_LEN" == 160000 && "$API_NPROC" == 4 ]]
+[[ "$MAIN_MAX_MODEL_LEN" == 80000 && "$API_NPROC" == 4 ]]
 [[ -z "$(draft_base_urls)" ]]
 start_sandbox() { echo UNEXPECTED_SANDBOX; return 1; }
 print_gpu_snapshot() { :; }

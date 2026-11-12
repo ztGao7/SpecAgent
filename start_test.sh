@@ -21,7 +21,7 @@ RUN_PATHS_READY=false
 
 BENCH="${BENCH:-vstar}"
 MODE="${MODE:-infer}"
-API_NPROC="${API_NPROC:-1}"
+API_NPROC="${API_NPROC:-4}"
 EVAL_RETRY="${EVAL_RETRY:-${SPECTOOL_API_RETRY:-1}}"
 SPECTOOL_OPENAI_MAX_RETRIES="${SPECTOOL_OPENAI_MAX_RETRIES:-0}"
 SPECTOOL_API_TIMEOUT="${SPECTOOL_API_TIMEOUT:-180}"
@@ -85,7 +85,7 @@ MAIN_TP="${MAIN_TP:-1}"
 DRAFT_TP="${DRAFT_TP:-1}"
 DRAFT_REPLICAS="${DRAFT_REPLICAS:-1}"
 MAIN_GPU_MEMORY_UTILIZATION="${MAIN_GPU_MEMORY_UTILIZATION:-0.9}"
-DRAFT_GPU_MEMORY_UTILIZATION="${DRAFT_GPU_MEMORY_UTILIZATION:-0.8}"
+DRAFT_GPU_MEMORY_UTILIZATION="${DRAFT_GPU_MEMORY_UTILIZATION:-0.9}"
 # Resolve benchmark-dependent defaults after CLI parsing.
 MAIN_MAX_MODEL_LEN="${MAIN_MAX_MODEL_LEN:-}"
 DRAFT_MAX_MODEL_LEN="${DRAFT_MAX_MODEL_LEN:-}"
@@ -147,7 +147,7 @@ usage() {
         "Eval options mirror spectool/scripts/eval.sh:" \
         "  --bench NAME            vstar, mathvista, mathvision, mathvision_testmini, ..." \
         "  --mode MODE             infer or all (default: infer)" \
-        "  --api-nproc N           Eval workers; for --speceyes, parallel tool-agent items per batch (default: 1)" \
+        "  --api-nproc N           Eval workers; for --speceyes, parallel tool-agent items per batch (default: 4)" \
         "  --speceye-batch-size N  Questions per official SpecEyes funnel (default: 6)" \
         "  --output-dir DIR        One directory for all files from this run" \
         "  --work-dir DIR          Alias for --output-dir (predictions go in DIR/predictions)" \
@@ -1066,10 +1066,9 @@ resolve_mode() {
     [[ "$FAST_ANSWER_HANDOFF_GRACE_SECONDS" =~ ^[0-9]+([.][0-9]+)?$ ]] \
         || die "FAST_ANSWER_HANDOFF_GRACE_SECONDS must be non-negative: $FAST_ANSWER_HANDOFF_GRACE_SECONDS"
     if [[ -z "$MAIN_MAX_MODEL_LEN" ]]; then
-        case "$BENCH" in
-            hrbench*) MAIN_MAX_MODEL_LEN=160000 ;;
-            *) MAIN_MAX_MODEL_LEN="$MODEL_MAX_LEN" ;;
-        esac
+        # One context length for every benchmark (80000), as on the resident services
+        # used for the reported runs; HRBench4K completed within it.
+        MAIN_MAX_MODEL_LEN="$MODEL_MAX_LEN"
     fi
     if [[ -z "$DRAFT_MAX_MODEL_LEN" ]]; then
         DRAFT_MAX_MODEL_LEN="$MAIN_MAX_MODEL_LEN"

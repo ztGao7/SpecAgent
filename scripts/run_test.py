@@ -19,6 +19,7 @@ def main():
     parser.add_argument("--bench", choices=DATASETS, default="vstar")
     parser.add_argument("--samples", type=int, default=2)
     parser.add_argument("--full", action="store_true", help="Use the full selected dataset")
+    parser.add_argument("--api-nproc", type=int, help="Samples evaluated concurrently (default: $API_NPROC or 4)")
     parser.add_argument("--reuse-services", action="store_true", help="Use, never stop, existing endpoints on configured ports")
     parser.add_argument("--dry-run", action="store_true", help="Print the plan without installing, downloading or starting anything")
     parser.add_argument("--main-gpus")
@@ -33,6 +34,8 @@ def main():
     args = parser.parse_args()
     if args.samples < 1 or (args.main_tp is not None and args.main_tp < 1) or (args.draft_tp is not None and args.draft_tp < 1):
         parser.error("sample count and tensor parallel sizes must be positive")
+    if args.api_nproc is not None and args.api_nproc < 1:
+        parser.error("api-nproc must be positive")
     env = dict(os.environ)
     work = Path(env.get("SPECAGENT_WORK_ROOT", ROOT / ".local")).expanduser().resolve()
     conda = Path(env.get("CONDA_BASE", work / "miniconda3"))
@@ -50,12 +53,13 @@ def main():
         "MAIN_TP": args.main_tp or env.get("MAIN_TP", "1"),
         "DRAFT_GPUS": args.draft_gpus or env.get("DRAFT_GPUS", ""),
         "DRAFT_TP": args.draft_tp or env.get("DRAFT_TP", "1"),
-        "MODEL_MAX_LEN": env.get("MODEL_MAX_LEN", "32768"),
+        "MODEL_MAX_LEN": env.get("MODEL_MAX_LEN", "80000"),
+        "MAIN_GPU_MEMORY_UTILIZATION": env.get("MAIN_GPU_MEMORY_UTILIZATION", "0.9"),
         "DRAFT_GPU_MEMORY_UTILIZATION": env.get("DRAFT_GPU_MEMORY_UTILIZATION", "0.9"),
-        "MAIN_EXTRA_ARGS": env.get("MAIN_EXTRA_ARGS", "--dtype float16 --max-num-seqs 2 --enable-prefix-caching"),
-        "DRAFT_EXTRA_ARGS": env.get("DRAFT_EXTRA_ARGS", "--dtype float16 --max-num-seqs 2 --enable-prefix-caching"),
-        "MAIN_MAX_NUM_BATCHED_TOKENS": env.get("MAIN_MAX_NUM_BATCHED_TOKENS", "8192"),
-        "DRAFT_MAX_NUM_BATCHED_TOKENS": env.get("DRAFT_MAX_NUM_BATCHED_TOKENS", "8192"),
+        "MAIN_EXTRA_ARGS": env.get("MAIN_EXTRA_ARGS", "--dtype float16 --max-num-seqs 8 --enable-prefix-caching"),
+        "DRAFT_EXTRA_ARGS": env.get("DRAFT_EXTRA_ARGS", "--dtype float16 --max-num-seqs 8 --enable-prefix-caching"),
+        "MAIN_MAX_NUM_BATCHED_TOKENS": env.get("MAIN_MAX_NUM_BATCHED_TOKENS", "32768"),
+        "DRAFT_MAX_NUM_BATCHED_TOKENS": env.get("DRAFT_MAX_NUM_BATCHED_TOKENS", "32768"),
     }.items():
         env[key] = str(value)
     resource = Path(env.get("RESOURCE_DIR", work / "resources"))
@@ -74,8 +78,9 @@ def main():
     # Data URLs work with both freshly started and externally supplied services;
     # they do not depend on those services' allowed-local-media-path setting.
     env["SPECAGENT_EVAL_DRIVER"] = args.method if args.method in {"specreason", "dreamr"} else "vlmeval"
+    api_nproc = args.api_nproc or int(env.get("API_NPROC", "4"))
     command = ["bash", str(ROOT / "start_test.sh"), f"--{selected_method}",
-               "--bench", args.bench, "--mode", "infer", "--api-nproc", "1",
+               "--bench", args.bench, "--mode", "infer", "--api-nproc", str(api_nproc),
                "--output-dir", str(run)]
     # Forward runtime allocation explicitly to the actual service launcher.
     for name in ("main_gpus", "main_tp", "draft_gpus", "draft_tp",
@@ -92,7 +97,12 @@ def main():
                       "samples": "all" if args.full else args.samples,
                       "output": str(run), "predictions": str(output), "main_gpus": env["MAIN_GPUS"],
                       "main_tp": env["MAIN_TP"], "draft_gpus": env["DRAFT_GPUS"],
-                      "draft_tp": env["DRAFT_TP"], "reusing_services": args.reuse_services}, indent=2), flush=True)
+                      "draft_tp": env["DRAFT_TP"], "api_nproc": api_nproc,
+                      "reusing_services": args.reuse_services,
+                      "vllm": {"max_model_len": env["MODEL_MAX_LEN"],
+                               "max_num_batched_tokens": [env["MAIN_MAX_NUM_BATCHED_TOKENS"], env["DRAFT_MAX_NUM_BATCHED_TOKENS"]],
+                               "gpu_memory_utilization": [env["MAIN_GPU_MEMORY_UTILIZATION"], env["DRAFT_GPU_MEMORY_UTILIZATION"]],
+                               "main_extra_args": env["MAIN_EXTRA_ARGS"], "draft_extra_args": env["DRAFT_EXTRA_ARGS"]}}, indent=2), flush=True)
     print(json.dumps({"client_python": python, "server_python": server,
                       "main_model": env.get("MAIN_MODEL_PATH"), "draft_model": env.get("DRAFT_MODEL_PATH"),
                       "data_table": str(table)}, indent=2), flush=True)

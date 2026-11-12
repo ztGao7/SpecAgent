@@ -2,7 +2,7 @@
 
 This revision includes Spectool's runtime, shared model/tool/image/prompt helpers, the local sandbox, the modified VLMEvalKit, and environment/download/test entry points. It supersedes the initial baseline-only release, whose shared runtime was intentionally omitted.
 
-The original research behavior is retained. Deployment changes remove fixed machine paths, read Redis configuration from the environment, bind services to loopback, clean dependency-file conflict markers and add portable environment initialization. The quick entry point explicitly uses a 32768 context, one evaluation worker and data-URL image transport; these are smoke-test settings, not a reproduction of any historical timed experiment.
+The original research behavior is retained. Deployment changes remove fixed machine paths, read Redis configuration from the environment, bind services to loopback, clean dependency-file conflict markers and add portable environment initialization. The quick and full entry points now share defaults: an 80000-token context, four evaluation workers, a 32768 batched-token budget and eight in-flight sequences per model service. The quick entry point uses data-URL image transport. These defaults are not a reproduction of every historical timed experiment.
 
 SpecReason runs its own sequential controller on a checksum-recorded copy of the shared runtime. Its launcher uses the active environment, model IDs are explicit, and its data/media directories are configurable. The shared service launcher now supports dispatch to that controller without importing Spectool's speculative decision policy into the baseline.
 
