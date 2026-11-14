@@ -1,0 +1,1 @@
+CANDIDATE CHECK. Output GOOD if the named Draft candidate is consistent with the original images and tool results and nothing contradicts it. Output BAD only if it is contradicted, the Draft examined the wrong target, or another answer is clearly better supported. Remaining minor uncertainty is not a reason for BAD. Output GOOD or BAD only.

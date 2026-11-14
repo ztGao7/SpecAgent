@@ -1,0 +1,6 @@
+RELEVANCE CHECK. First identify, silently, the object, region, text or quantity the question asks about. Then look at the latest tool call and its actual output.
+
+GOOD: the call examines that target or something needed to locate or measure it, and the output shows it (even partially or at low quality).
+BAD: the call examines something the question does not need, the crop or computation misses the target entirely, the output is empty, or it repeats an earlier step on the same region without new information. Do not judge whether the Draft's conclusion is right; tool execution errors are handled separately.
+
+Answer with GOOD or BAD only.

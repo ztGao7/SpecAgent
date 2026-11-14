@@ -78,6 +78,25 @@ def answer_verification_instruction(choices=None, *, quality_enabled=False):
     )
 
 
+def lenient_fast_instruction(choices=None):
+    """Answer-leaning fast instruction; same structured output as the original."""
+    answer = ("X, where X is one of " + ", ".join(choices)) if choices else "YOUR COMPLETE ANSWER"
+    return (
+        "Answer the question from the images. State at most 24 words of "
+        "concrete visible evidence, then the complete answer, and LAST set "
+        "verified to 1 if your answer is the one best supported by what you "
+        "see. Set verified to 0 only if you cannot see the decisive detail. "
+        "Do not call tools.\n"
+        "The quality prefix is NA. Output exactly one of:\n"
+        "NA|<verified>0</verified>\nNA|<evidence>brief observable evidence</evidence>"
+        f"<answer>{answer}</answer><verified>1</verified>\n"
+        "The same candidate form with <verified>0</verified> is also valid. "
+        "Never put the verification decision before the candidate.")
+
+
 def fast_answer_instruction(choices=None):
     """Keep the historical balanced initial prompt compatible with the caller."""
+    import os
+    if os.environ.get("SPECTOOL_FAST_INSTR", "").strip().lower() == "lenient":
+        return lenient_fast_instruction(choices)
     return answer_verification_instruction(choices)

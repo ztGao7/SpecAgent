@@ -754,15 +754,6 @@ def _verification_distribution(content, logprobs_content):
     return {}
 
 
-def _prefix_tool_kwargs(tools: list | None) -> dict:
-    """Render the agent tool schemas while forbidding a tool call.
-
-    The chat template renders tools into the system turn, so a judge request
-    must send the same schemas as the fallback to share its cached prefix.
-    """
-    return {"tools": tools, "tool_choice": "none"} if tools else {}
-
-
 def _answer_verification_regex(choices=None, *, quality_enabled=True):
     quality = r"(GOOD|BAD)" if quality_enabled else "NA"
     answer = "(" + "|".join(re.escape(c) for c in choices) + ")" if choices else r"[^<>]{1,2000}"
@@ -806,7 +797,10 @@ class VLLMModel:
             messages=messages,
             temperature=self.config.temperature,
             max_tokens=_bounded_max_tokens(self.config.max_tokens, default_cap=0),
-            timeout=self.config.timeout,
+            # A full-length Main step (fallback) can take longer than the
+            # short judge requests' API timeout under load.
+            timeout=float(os.environ.get(
+                "SPECTOOL_GENERATE_TIMEOUT", max(float(self.config.timeout), 600.0))),
             # repetition_penalty 打断 27B 贪心解码(temp=0)下的退化复读循环：
             # agent baseline 上 ~12% 样本会复读同一段裁图代码直到烧光 max_tokens
             # (单步 >600s),与 draft 的 1.1 对齐(见 draft_model.py)。
@@ -870,9 +864,9 @@ class VLLMModel:
         return {"text": text, "content_logprobs": content_logprobs}
 
     def judge_good_bad(self, messages: list[dict],
-                       tools: list | None = None) -> dict:
+                       cancel_token: Optional[RequestCancellation] = None) -> dict:
         """Return P(GOOD) for a narrow GOOD/BAD quality-judge prompt."""
-        resp = self.client.chat.completions.create(
+        request_kwargs = dict(
             model=self.config.model_name,
             messages=messages,
             temperature=0.0,
@@ -884,8 +878,12 @@ class VLLMModel:
                 "chat_template_kwargs": {"enable_thinking": False},
                 "structured_outputs": {"choice": ["GOOD", "BAD"]},
             },
-            **_prefix_tool_kwargs(tools),
         )
+        if cancel_token is None:
+            resp = self.client.chat.completions.create(**request_kwargs)
+        else:
+            resp = asyncio.run(self._create_cancellable_completion(
+                request_kwargs, cancel_token))
         msg = resp.choices[0].message
         raw = msg.model_dump() if hasattr(msg, "model_dump") else {}
         content = (msg.content or raw.get("reasoning") or
@@ -919,8 +917,7 @@ class VLLMModel:
         }
 
     def answer_if_sufficient(self, messages: list[dict],
-                             choices: Optional[list[str]] = None,
-                             tools: list | None = None) -> str:
+                             choices: Optional[list[str]] = None) -> str:
         """Return a short answer or INSUFFICIENT_EVIDENCE without mutating state."""
         extra_body = {
             "chat_template_kwargs": {"enable_thinking": False},
@@ -937,19 +934,17 @@ class VLLMModel:
             max_tokens=32,
             timeout=self.config.timeout,
             extra_body=extra_body,
-            **_prefix_tool_kwargs(tools),
         )
         return _model_response(resp.choices[0])
 
     def fast_answer_gate(
         self, messages: list[dict], choices: Optional[list[str]] = None,
         cancel_token: Optional[RequestCancellation] = None,
-        tools: list | None = None,
     ) -> dict:
         """Compatibility wrapper for the shared answerability mechanism."""
         return self.assess_draft_step(
             messages, choices=choices, cancel_token=cancel_token,
-            quality_enabled=False, include_logprobs=True, tools=tools)
+            quality_enabled=False, include_logprobs=True)
 
     async def _create_cancellable_completion(
         self, request_kwargs: dict, cancel_token: RequestCancellation,
@@ -994,7 +989,6 @@ class VLLMModel:
         self, messages: list[dict], choices: Optional[list[str]] = None,
         cancel_token: Optional[RequestCancellation] = None,
         quality_enabled: bool = True, include_logprobs: bool = True,
-        tools: list | None = None,
     ) -> dict:
         """Assess tool quality and answerability in a short Main request."""
         extra_body = {
@@ -1012,7 +1006,6 @@ class VLLMModel:
             max_tokens=128 if choices else 256,
             timeout=self.config.timeout,
             extra_body=extra_body,
-            **_prefix_tool_kwargs(tools),
         )
         if include_logprobs:
             request_kwargs["logprobs"] = True

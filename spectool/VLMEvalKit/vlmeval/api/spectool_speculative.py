@@ -311,6 +311,12 @@ class SpeculativeSpectoolAgentAPI(BaseAPI):
             "eval_attempts": retry,
             "openai_max_retries": max(0, _env_int("SPECTOOL_OPENAI_MAX_RETRIES", 0)),
         }
+        # Record the judge prompt layout so a run shows which roles were image-first.
+        self.runtime_config["image_first_roles"] = sorted(
+            part.strip() for part in os.environ.get("SPECTOOL_IMAGE_FIRST", "").split(",") if part.strip())
+        self.runtime_config["judge_anchor"] = os.environ.get("SPECTOOL_JUDGE_ANCHOR", "")
+        self.runtime_config["qj_only"] = {k: os.environ.get(k, "") for k in ("SPECTOOL_QJ_ONLY", "SPECTOOL_QJ_PROMPT_FILE", "SPECTOOL_FAST_HANDOFF_DETACH", "SPECTOOL_FAST_ACCEPT_AT_HANDOFF", "SPECTOOL_FAST_PROMPT_FILE", "SPECTOOL_FAST_INSTR", "SPECTOOL_REVIEW_SYSTEM_FILE", "SPECTOOL_REVIEW_INSTRUCTION_FILE", "SPECTOOL_ABL_NO_STEP_JUDGE", "SPECTOOL_ABL_NO_VERIFIER", "SPECTOOL_MAX_CONSECUTIVE_QUALITY_BAD")}
+        self.runtime_config["sync"] = os.environ.get("SPECTOOL_SYNC", "")
         print("[spectool-config] " + json.dumps(self.runtime_config, sort_keys=True), flush=True)
 
     def _select_draft_model(self, sample_id) -> tuple[int, object]:
@@ -422,7 +428,11 @@ class SpeculativeSpectoolAgentAPI(BaseAPI):
         if getattr(self, "direct_only", False):
             return self._generate_direct(inputs, **kwargs)
 
-        from spectool_agent.speculative_agent import SpeculativeAgentLoop
+        if os.environ.get("SPECTOOL_SYNC", "0") == "1":
+            from spectool_agent.sync_testing.synchronous_agent import (
+                SynchronousSpeculativeAgentLoop as SpeculativeAgentLoop)
+        else:
+            from spectool_agent.speculative_agent import SpeculativeAgentLoop
         from spectool_agent.benchmarks import (resolve_benchmark_profile,
                                                resolve_sample_id)
         from spectool_agent.prompts import get_prompt_set
@@ -468,7 +478,7 @@ class SpeculativeSpectoolAgentAPI(BaseAPI):
             mathvision_max_steps = int(
                 os.environ.get("SPECTOOL_MATHVISION_MAX_STEPS", "12"))
             if mathvision_max_steps != self.cfg.max_steps:
-                cfg_for_call = replace(self.cfg, max_steps=mathvision_max_steps)
+                cfg_for_call = replace(self.cfg, max_steps=mathvision_max_steps, draft_max_steps=mathvision_max_steps)
 
         tools = ToolRegistry()
         tool_schemas = register_default_tools(
@@ -557,7 +567,6 @@ class SpeculativeSpectoolAgentAPI(BaseAPI):
                 "fallback_wall_budget": traj.fallback_wall_budget,
                 "fallback_wall_elapsed_before": traj.fallback_wall_elapsed_before,
                 "fallback_wall_time": traj.fallback_wall_time,
-                "fallback_replay_dropped_steps": traj.fallback_replay_dropped_steps,
                 "timing_events": traj.timing_events,
                 "trajectory": [asdict(s) for s in traj.steps],
                 "draft_replica_index": draft_replica_index,
@@ -598,7 +607,6 @@ class SpeculativeSpectoolAgentAPI(BaseAPI):
             "fallback_wall_budget": traj.fallback_wall_budget,
             "fallback_wall_elapsed_before": traj.fallback_wall_elapsed_before,
             "fallback_wall_time": traj.fallback_wall_time,
-            "fallback_replay_dropped_steps": traj.fallback_replay_dropped_steps,
             "timing_events": traj.timing_events,
             "trajectory": [asdict(s) for s in traj.steps],
             "dataset": dataset,
