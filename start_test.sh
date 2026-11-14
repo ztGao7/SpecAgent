@@ -44,7 +44,14 @@ QUALITY_JUDGE_ENABLED="${QUALITY_JUDGE_ENABLED:-true}"
 QUALITY_JUDGE_THRESHOLD="${QUALITY_JUDGE_THRESHOLD:-0.7}"
 FAST_ANSWER_ENABLED="${FAST_ANSWER_ENABLED:-true}"
 FAST_ANSWER_HANDOFF_GRACE_SECONDS="${FAST_ANSWER_HANDOFF_GRACE_SECONDS:-1.0}"
+_ANSWERABILITY_THRESHOLD_GIVEN="${ANSWERABILITY_THRESHOLD:+1}"
 ANSWERABILITY_THRESHOLD="${ANSWERABILITY_THRESHOLD:-0.95}"
+# Spectool decision configuration: "final" = 2026-11 experiment config (GOOD/BAD step judge, mid fast
+# prompt, lenient verifier; prompts in configs/spectool_final), "orig" = code defaults without those switches.
+SPECTOOL_CONFIG="${SPECTOOL_CONFIG:-final}"
+SPECTOOL_CONFIG_DIR="${SPECTOOL_CONFIG_DIR:-$CODE_ROOT/configs/spectool_final}"
+SYNC_PROTOCOL="${SYNC_PROTOCOL:-false}"           # --sync: step-synchronous Draft/Main protocol
+QUALITY_BAD_STREAK="${QUALITY_BAD_STREAK:-2}"     # consecutive BAD step judgements before Main takes over
 FALLBACK_REUSE_VALIDATED_EVIDENCE="${FALLBACK_REUSE_VALIDATED_EVIDENCE:-false}"
 SAMPLE_WALL_BUDGET_SECONDS="${SAMPLE_WALL_BUDGET_SECONDS:-0}"
 
@@ -177,6 +184,10 @@ usage() {
         "  --fallback-reuse-validated-evidence" \
         "                         Reuse only QJ-approved Draft tool turns in a clean Main fallback (default: off)" \
         "  --sample-wall-budget N  Whole-sample wall budget in seconds (0 disables)" \
+        "  --spectool-config NAME  final (default: 2026-11 experiment config, prompts in configs/spectool_final;" \
+        "                         answerability threshold 0.9 unless given) or orig (code defaults)" \
+        "  --sync                  Step-synchronous protocol: fast answer first, each Draft tool step waits for Main" \
+        "  --quality-bad-streak N  Consecutive BAD step judgements before Main fallback (default: 2; 1 = first BAD)" \
         "" \
         "Service options:" \
         "  --main-port PORT        Main starting port (default: 8126; skips busy ports)" \
@@ -267,9 +278,13 @@ parse_args() {
             --no-fallback-reuse-validated-evidence) FALLBACK_REUSE_VALIDATED_EVIDENCE=false; shift ;;
             --answerability-threshold)
                 ANSWERABILITY_THRESHOLD="$2"
+                _ANSWERABILITY_THRESHOLD_GIVEN=1
                 shift 2
                 ;;
             --sample-wall-budget) SAMPLE_WALL_BUDGET_SECONDS="$2"; shift 2 ;;
+            --spectool-config) SPECTOOL_CONFIG="$2"; shift 2 ;;
+            --sync) SYNC_PROTOCOL=true; shift ;;
+            --quality-bad-streak) QUALITY_BAD_STREAK="$2"; shift 2 ;;
             --main-port) MAIN_PORT="$2"; shift 2 ;;
             --draft-port) DRAFT_PORT="$2"; shift 2 ;;
             --draft-ports) DRAFT_PORTS="$2"; shift 2 ;;
@@ -1072,6 +1087,22 @@ resolve_mode() {
         || die "SAMPLE_WALL_BUDGET_SECONDS must be non-negative: $SAMPLE_WALL_BUDGET_SECONDS"
     [[ "$FAST_ANSWER_HANDOFF_GRACE_SECONDS" =~ ^[0-9]+([.][0-9]+)?$ ]] \
         || die "FAST_ANSWER_HANDOFF_GRACE_SECONDS must be non-negative: $FAST_ANSWER_HANDOFF_GRACE_SECONDS"
+    [[ "$QUALITY_BAD_STREAK" =~ ^[1-9][0-9]*$ ]] \
+        || die "--quality-bad-streak must be a positive integer: $QUALITY_BAD_STREAK"
+    case "$SPECTOOL_CONFIG" in
+        final)
+            local _f
+            for _f in fast_system_mid.txt qj_prompt_target.txt review_system.txt review_instruction.txt; do
+                [[ -f "$SPECTOOL_CONFIG_DIR/$_f" ]] || die "Missing Spectool prompt file: $SPECTOOL_CONFIG_DIR/$_f"
+            done
+            [[ -n "$_ANSWERABILITY_THRESHOLD_GIVEN" ]] || ANSWERABILITY_THRESHOLD=0.9
+            ;;
+        orig) ;;
+        *) die "--spectool-config must be final or orig: $SPECTOOL_CONFIG" ;;
+    esac
+    if [[ "$SYNC_PROTOCOL" == true && "$RUN_MODE" != spectool ]]; then
+        die "--sync applies only to --spectool"
+    fi
     if [[ -z "$MAIN_MAX_MODEL_LEN" ]]; then
         # One context length for every benchmark (80000), as on the resident services
         # used for the reported runs; HRBench4K completed within it.
@@ -1240,6 +1271,7 @@ run_eval() {
         export SPECTOOL_ANSWERABILITY_THRESHOLD="$ANSWERABILITY_THRESHOLD"
         export SPECTOOL_FALLBACK_REUSE_VALIDATED_EVIDENCE="$FALLBACK_REUSE_VALIDATED_EVIDENCE"
         export SPECTOOL_SAMPLE_WALL_BUDGET_SECONDS="$SAMPLE_WALL_BUDGET_SECONDS"
+        export_spectool_config
         export SPECTOOL_VLLM_BASE="http://127.0.0.1:${EVAL_MAIN_PORT}/v1"
         export SPECTOOL_VLLM_MODEL="$EVAL_MAIN_MODEL"
         export SPECTOOL_VLLM_KEY="${SPECTOOL_VLLM_KEY:-EMPTY}"
@@ -1290,6 +1322,23 @@ run_eval() {
     return "$status"
 }
 
+# Caller-exported SPECTOOL_* values win over the configuration defaults below.
+export_spectool_config() {
+    export SPECTOOL_MAX_CONSECUTIVE_QUALITY_BAD="$QUALITY_BAD_STREAK"
+    if [[ "$SYNC_PROTOCOL" == true ]]; then export SPECTOOL_SYNC=1; else export SPECTOOL_SYNC="${SPECTOOL_SYNC:-0}"; fi
+    [[ "$SPECTOOL_CONFIG" == final ]] || return 0
+    local d="$SPECTOOL_CONFIG_DIR"
+    export SPECTOOL_QJ_ONLY="${SPECTOOL_QJ_ONLY:-1}"
+    export SPECTOOL_IMAGE_FIRST="${SPECTOOL_IMAGE_FIRST:-assess}"
+    export SPECTOOL_JUDGE_ANCHOR="${SPECTOOL_JUDGE_ANCHOR:-fast}"
+    export SPECTOOL_FAST_HANDOFF_DETACH="${SPECTOOL_FAST_HANDOFF_DETACH:-1}"
+    export SPECTOOL_FAST_INSTR="${SPECTOOL_FAST_INSTR:-lenient}"
+    export SPECTOOL_QJ_PROMPT_FILE="${SPECTOOL_QJ_PROMPT_FILE:-$d/qj_prompt_target.txt}"
+    export SPECTOOL_FAST_PROMPT_FILE="${SPECTOOL_FAST_PROMPT_FILE:-$d/fast_system_mid.txt}"
+    export SPECTOOL_REVIEW_SYSTEM_FILE="${SPECTOOL_REVIEW_SYSTEM_FILE:-$d/review_system.txt}"
+    export SPECTOOL_REVIEW_INSTRUCTION_FILE="${SPECTOOL_REVIEW_INSTRUCTION_FILE:-$d/review_instruction.txt}"
+}
+
 print_summary() {
     local draft_url sandbox_url decision_gates
     sandbox_url="http://127.0.0.1:${SANDBOX_PORT}/run_jupyter"
@@ -1327,6 +1376,7 @@ print_summary() {
         "Image media : $IMAGE_TRANSPORT ${LOCAL_MEDIA_ROOT:-<embedded>}" \
         "Decision gates: $decision_gates" \
         "Fast-answer handoff grace: ${FAST_ANSWER_HANDOFF_GRACE_SECONDS}s" \
+        "Spectool config: $SPECTOOL_CONFIG; protocol=$( [[ "$SYNC_PROTOCOL" == true ]] && echo synchronous || echo asynchronous ); BAD streak to fallback=$QUALITY_BAD_STREAK" \
         "Fallback validated-evidence reuse: $FALLBACK_REUSE_VALIDATED_EVIDENCE" \
         "SpecEyes batch: ${SPECEYE_BATCH_SIZE} (used only in speceyes mode)" \
         "Sample wall budget: ${SAMPLE_WALL_BUDGET_SECONDS}s" \

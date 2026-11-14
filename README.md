@@ -2,7 +2,9 @@
 
 本仓库包含 Spectool，以及 SpecEyes、SpecReason、DreamR 在视觉工具任务上的基线适配实现，提供基于 vLLM 和 Python sandbox 的本地评测流程。
 
-**首次使用请看：[环境配置、模型下载与启动测试](docs/QUICKSTART.md)。** 公共运行时和 sandbox 已包含在仓库中，无需访问原实验服务器。
+**首次使用请看：[环境配置、模型下载与启动测试](docs/QUICKSTART.md)。**
+
+**本分支（exp/vstar-20261114）**：`start_test.sh --spectool` 默认使用 2026-11 实验最终配置，新增 `--sync`（步同步协议）和 `--quality-bad-streak N`（连续 N 次 BAD 即 fallback），用法与参考结果见 [Spectool 实验配置](docs/SPECTOOL_EXPERIMENTS.md)。 公共运行时和 sandbox 已包含在仓库中，无需访问原实验服务器。
 
 ## 快速开始
 
