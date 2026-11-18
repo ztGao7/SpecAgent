@@ -14,7 +14,8 @@ from .core import Config
 
 ROOT = Path(__file__).resolve().parents[1]
 DATASETS = {"vstar": "VStarBench", "mmstar": "MMStar", "mathvista": "MathVista_MINI",
-    "hrbench4k": "HRBench4K", "hrbench8k": "HRBench8K", "pope": "POPE"}
+    "hrbench4k": "HRBench4K", "hrbench8k": "HRBench8K", "pope": "POPE",
+    "agentvista": "AgentVista"}
 
 
 def sha(path):

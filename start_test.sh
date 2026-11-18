@@ -256,7 +256,7 @@ parse_args() {
             --api-nproc) API_NPROC="$2"; shift 2 ;;
             --speceye-batch-size) SPECEYE_BATCH_SIZE="$2"; shift 2 ;;
             --output-dir|--work-dir) OUTPUT_DIR_CLI="$2"; shift 2 ;;
-            --max-steps) MAX_STEPS="$2"; shift 2 ;;
+            --max-steps) MAX_STEPS="$2"; MAX_STEPS_EXPLICIT=1; shift 2 ;;
             --max-image-history) MAX_IMAGE_HISTORY="$2"; shift 2 ;;
             --image-max-size) IMAGE_MAX_SIZE="$2"; shift 2 ;;
             --tool-image-max-size) TOOL_IMAGE_MAX_SIZE="$2"; shift 2 ;;
@@ -1081,6 +1081,12 @@ start_sandbox() {
 
 resolve_mode() {
     [[ "$BENCH" != vdr ]] || die "VDR benchmark scripts have been removed; choose a supported --bench"
+    if [[ "$BENCH" == agentvista ]]; then
+        # Official AgentVista run.sh budget (30 turns, 8192 output tokens per
+        # request) unless --max-steps / SPECTOOL_MAX_TOKENS say otherwise.
+        [[ "${MAX_STEPS_EXPLICIT:-0}" == 1 ]] || MAX_STEPS=30
+        export SPECTOOL_MAX_TOKENS="${SPECTOOL_MAX_TOKENS:-8192}"
+    fi
     [[ "$MAX_STEPS" =~ ^[1-9][0-9]*$ ]] \
         || die "MAX_STEPS must be a positive integer: $MAX_STEPS"
     [[ "$SAMPLE_WALL_BUDGET_SECONDS" =~ ^[0-9]+([.][0-9]+)?$ ]] \
@@ -1275,6 +1281,16 @@ run_eval() {
         export SPECTOOL_VLLM_BASE="http://127.0.0.1:${EVAL_MAIN_PORT}/v1"
         export SPECTOOL_VLLM_MODEL="$EVAL_MAIN_MODEL"
         export SPECTOOL_VLLM_KEY="${SPECTOOL_VLLM_KEY:-EMPTY}"
+        if [[ "$BENCH" == agentvista ]]; then
+            # Serper (SERPAPI_KEY) and judge (VERIFIER_*) credentials; never printed.
+            if [[ -n "${AGENTVISTA_ENV_FILE:-}" ]]; then
+                [[ -f "$AGENTVISTA_ENV_FILE" ]] || { echo "ERROR: AGENTVISTA_ENV_FILE not found: $AGENTVISTA_ENV_FILE" >&2; exit 2; }
+                set -a; source "$AGENTVISTA_ENV_FILE"; set +a
+            fi
+            export AGENTVISTA_REPO="${AGENTVISTA_REPO:-$RESOURCE_DIR/benchmarks/AgentVista/repo}"
+            export AGENTVISTA_DATA_ROOT="${AGENTVISTA_DATA_ROOT:-$RESOURCE_DIR/benchmarks/AgentVista/prepared}"
+            [[ -n "${SERPAPI_KEY:-}" ]] || { echo "ERROR: AgentVista needs SERPAPI_KEY (set AGENTVISTA_ENV_FILE)" >&2; exit 2; }
+        fi
         export SPECTOOL_SANDBOX_URL="http://127.0.0.1:${SANDBOX_PORT}/run_jupyter"
         if [[ -n "$INDEX_FILE" ]]; then
             export VLMEVAL_INDEX_FILE="$INDEX_FILE"
@@ -1332,6 +1348,9 @@ export_spectool_config() {
     export SPECTOOL_IMAGE_FIRST="${SPECTOOL_IMAGE_FIRST:-assess}"
     export SPECTOOL_JUDGE_ANCHOR="${SPECTOOL_JUDGE_ANCHOR:-fast}"
     export SPECTOOL_FAST_HANDOFF_DETACH="${SPECTOOL_FAST_HANDOFF_DETACH:-1}"
+    # The prompt files below were tuned on visual QA; AgentVista keeps its own
+    # profile prompts (official system prompt, web-evidence verifier).
+    [[ "$BENCH" != agentvista ]] || return 0
     export SPECTOOL_FAST_INSTR="${SPECTOOL_FAST_INSTR:-lenient}"
     export SPECTOOL_QJ_PROMPT_FILE="${SPECTOOL_QJ_PROMPT_FILE:-$d/qj_prompt_target.txt}"
     export SPECTOOL_FAST_PROMPT_FILE="${SPECTOOL_FAST_PROMPT_FILE:-$d/fast_system_mid.txt}"

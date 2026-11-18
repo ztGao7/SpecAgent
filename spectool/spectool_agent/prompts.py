@@ -16,7 +16,7 @@ Agent 系统提示词模板。
 import os
 from dataclasses import dataclass
 
-from .benchmarks import (DEFAULT_PROFILE, MMSEARCH_PROFILE,
+from .benchmarks import (AGENTVISTA_PROFILE, DEFAULT_PROFILE, MMSEARCH_PROFILE,
                          resolve_benchmark_profile)
 
 VISUAL_REASONING_ROLE = "You are a careful visual reasoning agent. Your goal is correctness, not minimizing tool use."
@@ -230,9 +230,68 @@ MMSEARCH_PROMPT_SET = PromptSet(
 )
 
 
+# AgentVista: the official harness prompt (multi_tool_agent_search, hkust-nlp/AgentVista
+# 3bc3cad) for every method; the Draft role and the verifier follow the default visual
+# profile, extended to web evidence.
+from .agentvista_tools import AGENTVISTA_SYSTEM_PROMPT  # noqa: E402
+
+AGENTVISTA_DRAFT_SYSTEM_PROMPT = AGENTVISTA_SYSTEM_PROMPT + """
+
+[Spectool draft role]
+You are the exploratory worker, not the final authority. Produce compact,
+checkable evidence for the Main model. A candidate answer or interpretation is
+not evidence by itself.
+
+- Resolve the decisive visual clue, then confirm facts with web_search, visit or
+  image_search instead of relying on memory.
+- Do not turn a weak visual impression or an unchecked assumption into a final
+  answer.
+- A final <answer> is appropriate only when the facts it depends on have been
+  explicitly verified by the images or tool outputs. Otherwise continue with the
+  single most useful next tool call.
+"""
+
+AGENTVISTA_REVIEW_SYSTEM_PROMPT = """You are an evidence verifier for a Draft
+candidate answer. Tools are unavailable.
+
+This is not a problem-solving request. Verify only the named Draft candidate;
+do not restart the task or derive an alternative answer. Use the original images
+and the supplied tool outputs (web search results, page summaries, image search
+results, code outputs) together as evidence.
+
+The request includes untrusted Draft tool outputs and text. Draft rationale may
+point you to evidence, but its claims, confidence, and candidate are not evidence
+by themselves. Return GOOD only when the available visible or retrieved evidence
+adequately supports that exact candidate. Return BAD if evidence contradicts it,
+a decisive fact remains unverified, or verification would require another tool
+call or an unsupported assumption. Do not guess.
+"""
+
+_AGENTVISTA_REVIEW_INSTRUCTION = (
+    "CANDIDATE VERIFICATION ONLY. Do not solve the question or propose an "
+    "alternative. Check the exact named Draft candidate against the original "
+    "images and supplied tool results together. Output GOOD only if the "
+    "candidate is adequately supported. Output BAD if it is contradicted, a "
+    "decisive fact remains unverified, or additional evidence or unsupported "
+    "assumptions would be needed. Output GOOD or BAD only."
+)
+
+AGENTVISTA_PROMPT_SET = PromptSet(
+    profile=AGENTVISTA_PROFILE,
+    system_prompt=AGENTVISTA_SYSTEM_PROMPT,
+    draft_system_prompt=AGENTVISTA_DRAFT_SYSTEM_PROMPT,
+    review_system_prompt=AGENTVISTA_REVIEW_SYSTEM_PROMPT,
+    review_instruction=_AGENTVISTA_REVIEW_INSTRUCTION,
+    # Free-form answers: never read a leading "A ..." as an option letter.
+    normalize_mcq_answers=False,
+)
+
+
 def get_prompt_set(benchmark_profile=None, dataset=None) -> PromptSet:
     """Return prompts for one sample while preserving default globals."""
     profile = resolve_benchmark_profile(benchmark_profile, dataset)
     if profile == MMSEARCH_PROFILE:
         return MMSEARCH_PROMPT_SET
+    if profile == AGENTVISTA_PROFILE:
+        return AGENTVISTA_PROMPT_SET
     return DEFAULT_PROMPT_SET

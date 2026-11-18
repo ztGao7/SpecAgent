@@ -68,6 +68,11 @@ case "$BENCH" in
         BUILD_SCRIPT="$REPO_ROOT/scripts/build_mmsearch_tsv.py"
         SRC_DIR="${MMSEARCH_DATA_ROOT:-$RESOURCE_DIR/benchmarks/MMSearch/end2end}"
         ;;
+    agentvista)
+        DATA="${DATA:-AgentVista}"
+        BUILD_SCRIPT="$REPO_ROOT/scripts/build_agentvista_tsv.py"
+        SRC_DIR="${AGENTVISTA_DATA_ROOT:-$RESOURCE_DIR/benchmarks/AgentVista/prepared}"
+        ;;
     mathvision)
         DATA="${DATA:-MathVision}"
         BUILD_SCRIPT=""  # full MathVision downloads from VLMEvalKit URL
@@ -125,7 +130,7 @@ case "$BENCH" in
         ;;
     *)
         echo "ERROR: Unknown benchmark: $BENCH"
-        echo "Supported: vstar, mmsearch, mathvision, mathvista, mathvista_mini, mathvision_testmini, mmstar, pope, hrbench4k, hrbench8k"
+        echo "Supported: vstar, agentvista, mmsearch, mathvision, mathvista, mathvista_mini, mathvision_testmini, mmstar, pope, hrbench4k, hrbench8k"
         exit 1
         ;;
 esac

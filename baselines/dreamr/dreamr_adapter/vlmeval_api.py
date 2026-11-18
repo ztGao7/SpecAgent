@@ -53,8 +53,9 @@ class DreamRAPI(BaseAPI):
         if self.failed.is_set():
             raise SystemExit("DREAM-R halted after a service failure; partial JSON records retained")
         dataset = kwargs.get("dataset", "")
-        if resolve_benchmark_profile(dataset=dataset) != "default":
-            raise ValueError("This adapter currently supports the default visual/sandbox profile only")
+        profile = resolve_benchmark_profile(dataset=dataset)
+        if profile not in ("default", "agentvista"):
+            raise ValueError("This adapter supports the default visual/sandbox and AgentVista profiles only")
         sample_id = resolve_sample_id(kwargs.get("sample_id", ""), inputs, dataset=dataset)
         images, question = self._parse_vlmeval_inputs(inputs)
         content = []
@@ -63,7 +64,12 @@ class DreamRAPI(BaseAPI):
                 content.append({"type": "text", "text": f"[输入图片 {index} / sandbox image_{index}]"})
             content.append({"type": "image_url", "image_url": {"url": pil_to_data_url(image)}})
         content.append({"type": "text", "text": question})
-        history = [{"role": "system", "content": GENERATION_PROMPT}, {"role": "user", "content": content}]
+        # AgentVista: the official harness prompt and its four tools (same for Draft and Main).
+        system_prompt = GENERATION_PROMPT
+        if profile == "agentvista":
+            from spectool_agent.prompts import get_prompt_set
+            system_prompt = get_prompt_set(dataset=dataset).system_prompt
+        history = [{"role": "system", "content": system_prompt}, {"role": "user", "content": content}]
         tools = ToolRegistry()
         schemas = register_default_tools(tools, dataset=dataset)
         agent = DreamRAgent(self.main, self.draft, tools, schemas, self.config,

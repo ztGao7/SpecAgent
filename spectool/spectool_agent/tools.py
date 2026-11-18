@@ -24,7 +24,7 @@ from typing import Callable
 
 from PIL import Image
 
-from .benchmarks import MMSEARCH_PROFILE, resolve_benchmark_profile
+from .benchmarks import AGENTVISTA_PROFILE, MMSEARCH_PROFILE, resolve_benchmark_profile
 from .types import ToolCall
 from . import sandbox as _sandbox
 
@@ -88,11 +88,11 @@ class ToolRegistry:
                 f"Unknown tool '{call.tool_name}'. Available tools: "
                 f"{', '.join(self.names())}."
             )
-        if call.tool_name == "sandbox":
+        if call.tool_name in ("sandbox", "code_interpreter"):
             code = call.params.get("code") if isinstance(call.params, dict) else None
             if not isinstance(code, str) or not code.strip():
                 return (
-                    "The sandbox call was rejected before execution because "
+                    f"The {call.tool_name} call was rejected before execution because "
                     "it requires a non-empty string argument named 'code'."
                 )
         return None
@@ -145,7 +145,11 @@ class ToolRegistry:
     def is_stateful_tool(self, name: str) -> bool:
         """True when the tool runs in this registry's persistent Python session."""
         handler = self._tools.get(name)
-        return getattr(handler, "__func__", None) is ToolRegistry._sandbox
+        func = getattr(handler, "__func__", None)
+        if func is ToolRegistry._sandbox:
+            return True
+        from .agentvista_tools import _av_code_interpreter
+        return func is _av_code_interpreter
 
     def fork_clean_sandbox(self, images: list[Image.Image]) -> "ToolRegistry":
         """Give Main its own files/session without disturbing in-flight Draft IO."""
@@ -154,6 +158,12 @@ class ToolRegistry:
         # External readers and the audit belong to the same benchmark sample.
         # Rebind registry methods so sandbox/PythonInterpreter use child state.
         child._tool_audit_context = self._tool_audit_context
+        # AgentVista: share the stateless web clients; tool images restart.
+        for attr in ("_av_tools", "_av_summarizer"):
+            if hasattr(self, attr):
+                setattr(child, attr, getattr(self, attr))
+        if hasattr(self, "_av_tools"):
+            child._av_tool_images = []
         for name, handler in self._tools.items():
             if getattr(handler, "__self__", None) is self:
                 handler = handler.__func__.__get__(child, type(child))
@@ -512,6 +522,9 @@ def get_tool_schemas(benchmark_profile=None, dataset=None) -> list[dict]:
     profile = resolve_benchmark_profile(benchmark_profile, dataset)
     if profile == MMSEARCH_PROFILE:
         return MMSEARCH_TOOL_SCHEMAS
+    if profile == AGENTVISTA_PROFILE:
+        from .agentvista_tools import AGENTVISTA_TOOL_SCHEMAS
+        return AGENTVISTA_TOOL_SCHEMAS
     return DEFAULT_TOOL_SCHEMAS
 
 
@@ -530,5 +543,8 @@ def register_default_tools(
     if schemas is MMSEARCH_TOOL_SCHEMAS:
         _register_mmsearch_tools(registry)
         return schemas
+    if resolve_benchmark_profile(benchmark_profile, dataset) == AGENTVISTA_PROFILE:
+        from .agentvista_tools import register_agentvista_tools
+        return register_agentvista_tools(registry)
     registry.register("sandbox", registry._sandbox)
     return schemas

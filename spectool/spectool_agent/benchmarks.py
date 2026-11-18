@@ -9,7 +9,8 @@ from pathlib import Path
 
 DEFAULT_PROFILE = "default"
 MMSEARCH_PROFILE = "mmsearch"
-_KNOWN_PROFILES = {DEFAULT_PROFILE, MMSEARCH_PROFILE}
+AGENTVISTA_PROFILE = "agentvista"
+_KNOWN_PROFILES = {DEFAULT_PROFILE, MMSEARCH_PROFILE, AGENTVISTA_PROFILE}
 
 
 def is_mmsearch_dataset(dataset: object) -> bool:
@@ -20,6 +21,16 @@ def is_mmsearch_dataset(dataset: object) -> bool:
         char for char in str(dataset).strip().casefold() if char.isalnum()
     )
     return normalized.startswith("mmsearch")
+
+
+def is_agentvista_dataset(dataset: object) -> bool:
+    """Return whether a VLMEvalKit dataset name belongs to AgentVista."""
+    if dataset is None:
+        return False
+    normalized = "".join(
+        char for char in str(dataset).strip().casefold() if char.isalnum()
+    )
+    return normalized.startswith("agentvista")
 
 
 def resolve_benchmark_profile(
@@ -39,7 +50,11 @@ def resolve_benchmark_profile(
                 f"Unknown benchmark profile {benchmark_profile!r}; expected {known}"
             )
         return profile
-    return MMSEARCH_PROFILE if is_mmsearch_dataset(dataset) else DEFAULT_PROFILE
+    if is_mmsearch_dataset(dataset):
+        return MMSEARCH_PROFILE
+    if is_agentvista_dataset(dataset):
+        return AGENTVISTA_PROFILE
+    return DEFAULT_PROFILE
 
 
 def resolve_sample_id(

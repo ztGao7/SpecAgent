@@ -158,6 +158,7 @@ from .vlrmbench import VLRMBench
 from .vsibench import VsiBench, VsiSuperCount, VsiSuperRecall
 from .wiki_vqa_bench import WikiVQABench
 from .wildvision import WildVision
+from .agentvista import AgentVista
 from .worldsense import WorldSense
 from .worldvqa import WorldVQA
 from .xstest import XSTestDataset
@@ -274,6 +275,7 @@ class ConcatDataset(ImageBaseDataset):
 
 # Add new supported dataset class here
 IMAGE_DATASET = [
+    AgentVista,
     ImageCaptionDataset, ImageYORNDataset, ImageMCQDataset, ImageVQADataset,
     MathVision, LENS, MMMUDataset, OCRBench, MathVista, LLaVABench, LLaVABench_KO, VGRPBench, MMVet,  # noqa: E501
     MTVQADataset, TableVQABench, MMLongBench, VCRDataset, MMDUDataset, DUDE,
