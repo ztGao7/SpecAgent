@@ -251,6 +251,31 @@ def test_actual_infer_entry_persists_timings_and_resume(tmp_path, monkeypatch, s
     assert pd.read_excel(tmp_path / 'model_bench.xlsx').sample_wall_clock_s.tolist() == original_times
 
 
+def test_one_failed_sample_does_not_stringify_structured_predictions(tmp_path, monkeypatch):
+    monkeypatch.delenv('SPLIT_THINK', raising=False)
+    inference = load_inference(monkeypatch)
+    fail = 'Failed to obtain answer via API.'
+    class Model:
+        is_api = True
+        def generate(self, message, dataset):
+            if message[0]['value'] == 'q1':
+                return fail
+            return {'prediction': 'A', 'extra_records': {'total_time': 99}}
+    class Dataset:
+        dataset_name = 'bench'
+        def __init__(self):
+            self.data = pd.DataFrame({'index': [0, 1], 'question': ['q0', 'q1']})
+        def __len__(self):
+            return len(self.data)
+        def build_prompt(self, item):
+            return [{'type': 'text', 'value': item['question']}]
+    inference.infer_data_job(Model(), tmp_path, 'model', Dataset(), api_nproc=2)
+    result = pd.read_excel(tmp_path / 'model_bench.xlsx')
+    assert result.prediction.tolist() == ['A', fail]
+    assert str(result.extra_records[0]) == str({'total_time': 99}) and pd.isna(result.extra_records[1])
+    assert result.sample_wall_clock_s.notna().all()
+
+
 def test_eval_reporting_is_before_judge_and_after_inference():
     source = (ROOT / 'run.py').read_text()
     report = source.index('report_sample_wall_clock(result_file, logger=logger)')

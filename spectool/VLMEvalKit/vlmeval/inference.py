@@ -312,12 +312,14 @@ def infer_data_job(
             data['thinking'] = [x[1] for x in tups]
         else:
             # data['prediction'] = [str(data_all[x]) for x in data['index']]
-            # Add for agent evaluation
-            if all(_is_structured_record(data_all[x]) for x in data['index']):
-                data['prediction'] = [data_all[x]['prediction'] for x in data['index']]
-                data['extra_records'] = [data_all[x]['extra_records'] for x in data['index']]
+            # Add for agent evaluation. Unwrap per sample: one failed sample (a plain
+            # FAIL_MSG string) must not turn every other prediction into str(dict).
+            records = [data_all[x] for x in data['index']]
+            if any(_is_structured_record(v) for v in records):
+                data['prediction'] = [v['prediction'] if _is_structured_record(v) else str(v) for v in records]
+                data['extra_records'] = [v['extra_records'] if _is_structured_record(v) else None for v in records]
             else:
-                data['prediction'] = [str(data_all[x]) for x in data['index']]
+                data['prediction'] = [str(v) for v in records]
         if 'image' in data:
             data.pop('image')
 
