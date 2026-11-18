@@ -99,6 +99,23 @@ class DreamRFlow(unittest.TestCase):
         r, _, _, _ = run([bad], [0.99], [answer("C")])
         self.assertEqual((r["final_answer"], r["steps"][0]["candidate_error"]), ("C", "truncated_turn"))
 
+    def test_rejected_main_call_is_returned_as_observation_and_run_continues(self):
+        # 11-18 AgentVista smoke: Main rewrote a turn as a call to a nonexistent
+        # tool "answer"; that used to stop the whole sample as protocol_error.
+        class Tools(FakeTools):
+            def validate_call(self, call): return "Unknown tool 'answer'." if call.tool_name == "answer" else ""
+        bogus = Turn({"role": "assistant", "content": "", "tool_calls": [{"id": "cx"}]},
+                     [Call("x", tool_name="answer")], ["cx"])
+        main, draft, tools = FakeMain([0.1, 0.1], [bogus, answer("C")]), FakeDraft([answer("A"), answer("A")]), Tools()
+        r = DreamRAgent(main, draft, tools, [], Config(mode="dreamr"),
+            lambda cid, obs, imgs: [{"role": "tool", "tool_call_id": cid, "content": obs}]).run(
+            [{"role": "user", "content": "q"}], [object()])
+        self.assertEqual((r["stop_reason"], r["final_answer"], tools.executed), ("answer", "C", []))
+        self.assertEqual(r["steps"][0]["rejected_calls"], ["Unknown tool 'answer'."])
+        self.assertIn({"role": "tool", "tool_call_id": "cx", "content": "Unknown tool 'answer'."},
+                      main.rewrite_histories[1])
+        self.assertEqual(r["accounting"]["tool_calls"], 0)
+
     def test_verify_failure_cancels_rewrite(self):
         class Main(FakeMain):
             def verify(self, *a): raise ProtocolError("boom")

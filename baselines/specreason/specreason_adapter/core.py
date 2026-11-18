@@ -142,7 +142,9 @@ class SpecReasonAgent:
                     step["source"] = self.config.mode
                 step["committed_message"] = copy.deepcopy(chosen.message)
                 ledger.check_deadline()
-                error = self._invalid(chosen)
+                # Malformed turns still stop the sample; a call the tool registry
+                # rejects (unknown tool, empty code) is answered below instead.
+                error = self._invalid(chosen, check_tools=False)
                 if error:
                     raise ProtocolError(error)
                 if ledger.tool_calls + len(chosen.calls) > self.config.max_tool_calls:
@@ -163,6 +165,15 @@ class SpecReasonAgent:
                         {'type': 'text', 'text': feedback}]})
                 for call, call_id in zip(chosen.calls, chosen.call_ids):
                     ledger.check_deadline()
+                    rejection = self.tools.validate_call(call)
+                    if rejection:
+                        # Same recovery as the Agent loop: the call is not run, its
+                        # error is the tool result, and the next turn may correct it.
+                        ledger.tool_events.append({"turn": index, "call_id": call_id,
+                            "call": asdict(call), "status": "rejected", "observation": rejection})
+                        step.setdefault("rejected_calls", []).append(rejection)
+                        history.extend(self.result_messages(call_id, rejection, []))
+                        continue
                     started = time.perf_counter()
                     event = {"turn": index, "call_id": call_id,
                         "call": asdict(call), "started_s": started - ledger.started}
@@ -196,7 +207,7 @@ class SpecReasonAgent:
                 total_time=time.perf_counter() - ledger.started)
         return result
 
-    def _invalid(self, turn):
+    def _invalid(self, turn, check_tools=True):
         if not turn.valid:
             return turn.error or "invalid_turn"
         if len(turn.calls) != len(turn.call_ids) or len(set(turn.call_ids)) != len(turn.call_ids):
@@ -205,7 +216,7 @@ class SpecReasonAgent:
             return "missing_tool_call_id"
         if turn.calls and turn.answer is not None:
             return "ambiguous_tool_and_answer"
-        for call in turn.calls:
+        for call in (turn.calls if check_tools else ()):
             error = self.tools.validate_call(call)
             if error:
                 return error

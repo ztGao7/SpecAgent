@@ -157,6 +157,13 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(tools.executed, [])
         self.assertEqual(r["steps"][0]["source"], "main_rewrite")
 
+    def test_rejected_main_call_is_returned_as_observation_and_run_continues(self):
+        r, tools, main, _ = self.run_agent([answer("B"), answer("B")], [0, 0], [action(""), answer("C")])
+        self.assertEqual((r["stop_reason"], r["final_answer"], tools.executed), ("answer", "C", []))
+        self.assertEqual(r["steps"][0]["rejected_calls"], ["bad_call"])
+        self.assertIn({"role": "tool", "tool_call_id": "c1", "content": "bad_call"}, main.histories[1])
+        self.assertEqual(r["accounting"]["tool_calls"], 0)
+
     def test_bad_main_rewrite_stops_without_free_retries(self):
         bad = Turn({"role": "assistant", "content": ""}, valid=False, error="truncated_turn")
         r, _, main, _ = self.run_agent([answer()], [0], [bad])
