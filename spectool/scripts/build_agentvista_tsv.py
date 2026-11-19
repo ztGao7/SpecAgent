@@ -11,13 +11,43 @@ path, not embedded, so the TSV stays small.
 
 usage: build_agentvista_tsv.py --src-dir DIR --out LMUData/AgentVista.tsv
        (DIR holds official_eval.json and images/)
+   or: build_agentvista_tsv.py --parquet-dir PARQUET --src-dir DIR --out LMUData/AgentVista.tsv
+       (PARQUET holds the two pinned train-*.parquet files of Warrieryes/AgentVista
+        @61de767; the images are exported to DIR/images/agentvista_NNN_KK.png, RGB PNG,
+        with the same names and pixels as the official preparation)
 """
 import argparse
 import csv
+import glob
+import io
 import json
 import os
 import re
 import sys
+
+
+def rows_from_parquet(parquet_dir: str, img_dir: str) -> list[dict]:
+    """Official-format rows from the dataset Parquet files, exporting each image once."""
+    import pyarrow.parquet as pq
+    from PIL import Image
+    files = sorted(glob.glob(os.path.join(parquet_dir, "*.parquet")))
+    if not files:
+        sys.exit(f"no .parquet files in {parquet_dir}")
+    records = [r for f in files for r in pq.read_table(f).to_pylist()]
+    os.makedirs(img_dir, exist_ok=True)
+    rows = []
+    for i, rec in enumerate(records):
+        names = []
+        for j, image in enumerate(rec["images"]):
+            name = f"agentvista_{i:03d}_{j + 1:02d}.png"
+            path = os.path.join(img_dir, name)
+            if not os.path.isfile(path):
+                with Image.open(io.BytesIO(image["bytes"])) as opened:
+                    opened.convert("RGB").save(path)
+            names.append(name)
+        rows.append({"question_id": f"agentvista_{i:03d}", "problem": rec["problem"], "images": names,
+                     "solution": rec["answer"], "domain": rec["domain"], "subdomain": rec["subdomain"]})
+    return rows
 
 
 def main():
@@ -25,15 +55,18 @@ def main():
     ap.add_argument("--src-dir", default=os.environ.get("SRC_DIR", ""))
     ap.add_argument("--input-file", default="")
     ap.add_argument("--image-folder", default="")
+    ap.add_argument("--parquet-dir", default=os.environ.get("AGENTVISTA_PARQUET_DIR", ""))
     ap.add_argument("--out", default=os.path.join(os.environ.get("LMUData", ""), "AgentVista.tsv")
                     if os.environ.get("LMUData") else "")
     a = ap.parse_args()
     if not a.src_dir or not a.out:
         ap.error("--src-dir/--out (or SRC_DIR/LMUData) are required")
     src = os.path.abspath(a.src_dir)
-    data_file = a.input_file or os.path.join(src, "official_eval.json")
     img_dir = os.path.abspath(a.image_folder or os.path.join(src, "images"))
-    rows = json.load(open(data_file, encoding="utf-8"))
+    if a.parquet_dir:
+        rows = rows_from_parquet(os.path.abspath(a.parquet_dir), img_dir)
+    else:
+        rows = json.load(open(a.input_file or os.path.join(src, "official_eval.json"), encoding="utf-8"))
     out_rows = []
     for row in rows:
         qid = row["question_id"]

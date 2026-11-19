@@ -169,3 +169,26 @@ def test_tsv_builder_and_judge(tmp_path, monkeypatch):
     client.chat.completions.create.side_effect = RuntimeError("down")
     monkeypatch.setattr("time.sleep", lambda s: None)
     assert judge_one("q", "a", "b", client, "deepseek")[0] is None
+
+
+def test_tsv_builder_from_parquet(tmp_path):
+    pa = pytest.importorskip("pyarrow"); pq = pytest.importorskip("pyarrow.parquet")
+    import io as _io
+    def png(color):
+        buf = _io.BytesIO(); Image.new("RGBA", (3, 2), color).save(buf, format="PNG"); return buf.getvalue()
+    table = pa.table({"images": [[{"bytes": png("red"), "path": None}],
+                                 [{"bytes": png("blue"), "path": None}, {"bytes": png("green"), "path": None}]],
+                      "problem": ["<image>\nWhat city?", "<image><image>\nHow many?"], "answer": ["Paris", "3"],
+                      "domain": ["geography", "commerce"], "subdomain": ["g", "c"]})
+    (tmp_path / "pq").mkdir(); pq.write_table(table, tmp_path / "pq" / "train-00000-of-00001.parquet")
+    out = tmp_path / "LMUData" / "AgentVista.tsv"
+    script = Path(__file__).resolve().parents[2] / "scripts" / "build_agentvista_tsv.py"
+    subprocess.run([sys.executable, str(script), "--parquet-dir", str(tmp_path / "pq"), "--src-dir",
+                    str(tmp_path / "prepared"), "--out", str(out)], check=True)
+    import pandas as pd
+    tsv = pd.read_csv(out, sep="\t")
+    assert list(tsv["question_id"]) == ["agentvista_000", "agentvista_001"] and list(tsv["n_images"]) == [1, 2]
+    second = json.loads(tsv["image_path"][1])
+    assert [os.path.basename(p) for p in second] == ["agentvista_001_01.png", "agentvista_001_02.png"]
+    with Image.open(second[1]) as im:
+        assert im.mode == "RGB" and im.getpixel((0, 0)) == (0, 128, 0)
