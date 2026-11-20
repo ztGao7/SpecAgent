@@ -235,6 +235,17 @@ MMSEARCH_PROMPT_SET = PromptSet(
 # profile, extended to web evidence.
 from .agentvista_tools import AGENTVISTA_SYSTEM_PROMPT  # noqa: E402
 
+# Official AgentVista direct-answer prompt (prompts/inference_prompts.yaml, key
+# `direct_cot`, hkust-nlp/AgentVista @ 3bc3cad), used by --direct: one request, no tools.
+AGENTVISTA_DIRECT_SYSTEM_PROMPT = """You are a visual reasoning agent. Your goal is to answer questions about images.
+
+INSTRUCTIONS:
+1.  Analyze: Carefully observe the image and the user's question.
+2.  Think: Explain your step-by-step reasoning process.
+3.  Answer: Once you are confident in your findings, you MUST provide the final answer inside <answer> ...(your final answer)... </answer> tags! 
+    E.g., <answer>The answer is 10.</answer> / <answer> A </answer> / ...
+"""
+
 AGENTVISTA_DRAFT_SYSTEM_PROMPT = AGENTVISTA_SYSTEM_PROMPT + """
 
 [Spectool draft role]

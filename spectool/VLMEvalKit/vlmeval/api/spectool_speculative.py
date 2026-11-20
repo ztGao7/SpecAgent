@@ -353,10 +353,12 @@ class SpeculativeSpectoolAgentAPI(BaseAPI):
 
     def _generate_direct(self, inputs, **kwargs) -> tuple:
         """One ordinary Main request, with no tools, gates or fallback loop."""
-        from spectool_agent.benchmarks import resolve_benchmark_profile, resolve_sample_id
+        from spectool_agent.benchmarks import (AGENTVISTA_PROFILE, resolve_benchmark_profile,
+                                               resolve_sample_id)
         from spectool_agent.model import parse_answer, parse_tool_call
         from spectool_agent.agent import _detect_mcq_choices
-        from spectool_agent.prompts import DIRECT_SYSTEM_PROMPT, get_prompt_set
+        from spectool_agent.prompts import (AGENTVISTA_DIRECT_SYSTEM_PROMPT, DIRECT_SYSTEM_PROMPT,
+                                            get_prompt_set)
         from spectool_agent.speculative_agent import _as_input_images, _original_image_content
 
         started = time.perf_counter()
@@ -375,8 +377,11 @@ class SpeculativeSpectoolAgentAPI(BaseAPI):
         try:
             dataset = kwargs.get("dataset")
             profile = resolve_benchmark_profile(self.benchmark_profile, dataset)
-            if profile != "default":
-                raise ValueError("Direct evaluation currently supports visual QA, not research profiles")
+            if profile not in ("default", AGENTVISTA_PROFILE):
+                raise ValueError("Direct evaluation supports visual QA and AgentVista, not research profiles")
+            # AgentVista: the official direct-answer harness prompt (direct_cot).
+            system_prompt = (AGENTVISTA_DIRECT_SYSTEM_PROMPT if profile == AGENTVISTA_PROFILE
+                             else DIRECT_SYSTEM_PROMPT)
             sample_id = resolve_sample_id(
                 kwargs.get("sample_id", ""), inputs,
                 benchmark_profile=profile, dataset=dataset)
@@ -389,7 +394,7 @@ class SpeculativeSpectoolAgentAPI(BaseAPI):
                     item["text"] = item["text"].split(" / sandbox", 1)[0] + "]"
             content.append({"type": "text", "text": question})
             messages = [
-                {"role": "system", "content": DIRECT_SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": content},
             ]
             request_started = time.perf_counter()
@@ -399,7 +404,8 @@ class SpeculativeSpectoolAgentAPI(BaseAPI):
             has_tool_call = bool(self.main_model.last_tool_calls) or parse_tool_call(response) is not None
             answer = None if has_tool_call else parse_answer(
                 response, normalize_mcq=prompt_set.normalize_mcq_answers,
-                choices=_detect_mcq_choices(question), question=question)
+                choices=(_detect_mcq_choices(question) if prompt_set.normalize_mcq_answers else None),
+                question=question)
             record["trajectory"] = [{
                 "step_idx": 0, "reasoning": response, "answer": answer,
                 "inference_time": request_seconds, "tool_time": 0.0,

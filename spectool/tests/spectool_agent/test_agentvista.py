@@ -192,3 +192,54 @@ def test_tsv_builder_from_parquet(tmp_path):
     assert [os.path.basename(p) for p in second] == ["agentvista_001_01.png", "agentvista_001_02.png"]
     with Image.open(second[1]) as im:
         assert im.mode == "RGB" and im.getpixel((0, 0)) == (0, 128, 0)
+
+
+def _find_key(node, key):
+    if isinstance(node, dict):
+        if key in node:
+            return node[key]
+        for value in node.values():
+            found = _find_key(value, key)
+            if found is not None:
+                return found
+    return None
+
+
+@needs_repo
+def test_direct_prompt_is_the_official_direct_cot():
+    yaml = pytest.importorskip("yaml")
+    from spectool_agent.prompts import AGENTVISTA_DIRECT_SYSTEM_PROMPT
+    official = _find_key(yaml.safe_load(open(os.path.join(REPO, "prompts", "inference_prompts.yaml"))), "direct_cot")
+    assert official == AGENTVISTA_DIRECT_SYSTEM_PROMPT
+
+
+def test_direct_on_agentvista_uses_official_prompt_without_tools(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from spectool_agent.prompts import AGENTVISTA_DIRECT_SYSTEM_PROMPT
+    try:
+        from vlmeval.api.spectool_speculative import SpeculativeSpectoolAgentAPI
+    except Exception as exc:  # VLMEvalKit's heavy imports may be missing on a CPU box
+        pytest.skip(f"vlmeval not importable here: {exc}")
+    for key in list(os.environ):
+        if key.startswith("SPECTOOL_"):
+            monkeypatch.delenv(key)
+    monkeypatch.setenv("SPECTOOL_AGENT_ROOT", str(Path(__file__).resolve().parents[2]))
+    main = MagicMock()
+    text = "The flag shows A. red and B. blue stripes.\n<answer>Paris</answer>"
+    main.chat.completions.create.return_value = SimpleNamespace(choices=[SimpleNamespace(
+        message=SimpleNamespace(content=text, tool_calls=[], model_dump=lambda: {}))])
+    monkeypatch.setattr("spectool_agent.model.OpenAI", lambda **kwargs: main)
+    monkeypatch.setattr("spectool_agent.tools.register_default_tools",
+                        MagicMock(side_effect=AssertionError("direct must not register tools")))
+    paths = []
+    for color in ("red", "blue"):
+        paths.append(tmp_path / f"{color}.png"); Image.new("RGB", (16, 16), color).save(paths[-1])
+    inputs = [{"type": "image", "value": str(p)} for p in paths] + [
+        {"type": "text", "value": "Which city is this?\nA. hint one\nB. hint two"}]
+    direct = SpeculativeSpectoolAgentAPI(model="m", api_base="http://x/v1", direct_only=True, retry=1)
+    code, answer, record = direct.generate_inner(inputs, dataset="AgentVista", sample_id="agentvista_000")
+    request = main.chat.completions.create.call_args.kwargs
+    assert (code, answer) == (0, "Paris")
+    assert request["messages"][0] == {"role": "system", "content": AGENTVISTA_DIRECT_SYSTEM_PROMPT}
+    assert sum(item["type"] == "image_url" for item in request["messages"][1]["content"]) == 2
+    assert not request.get("tools")
